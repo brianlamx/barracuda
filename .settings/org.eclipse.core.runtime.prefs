@@ -1,0 +1,4 @@
+content-types/enabled=true
+content-types/org.eclipse.cdt.core.cHeader/file-extensions=cuh
+content-types/org.eclipse.cdt.core.cSource/file-extensions=cu
+eclipse.preferences.version=1
