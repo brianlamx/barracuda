@@ -39,6 +39,7 @@ int main() {
 */
 
 /*
+  2014-11-05 (0.7.0) beta: WBL Add kv_resize checking realloc
   2008-09-22 (0.1.0):
 
 	* The initial version.
@@ -60,7 +61,8 @@ int main() {
 #define kv_size(v) ((v).n)
 #define kv_max(v) ((v).m)
 
-#define kv_resize(type, v, s)  ((v).m = (s), (v).a = (type*)realloc((v).a, sizeof(type) * (v).m))
+#define kv_resize(type, v, s)  {((v).m = (s), (v).a = (type*)realloc((v).a, sizeof(type) * (v).m));\
+    if((v).a==NULL)err_fatal("kv_resize", "failed to realloc %lu bytes",sizeof(type) * (v).m);}
 
 #define kv_copy(type, v1, v0) do {							\
 		if ((v1).m < (v0).n) kv_resize(type, v1, (v0).n);	\
