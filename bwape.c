@@ -1,5 +1,6 @@
 /*
   2014-11-05 (0.7.0) beta: WBL Add .sai filenames to "Converting SA" diagnostic
+  and check_n_aln() Cf. Brian Lam email Wed, Nov 5, 2014 at 12:06 PM
 */
 
 #include <unistd.h>
@@ -497,6 +498,12 @@ static void *sampe_se_worker(void *data)
 
 #endif //HAVE_PTHREAD
 
+void check_n_aln(const int n_aln, const int i, const int j) {
+  //can fail this if sai file was created with version without STDOUT_BINARY_RESULT
+  if(n_aln<0 || n_aln>255) //min zero, max seen 39
+    err_fatal("n_aln", "%dBad number of alignments %d in sequence %d. .sai file %d should be binary",
+	      STDOUT_BINARY_RESULT,n_aln,i,j);
+}
 
 int bwa_cal_pac_pos_pe(const bntseq_t *bns, const char *prefix, bwt_t *const _bwt, int n_seqs, bwa_seq_t *seqs[2], FILE *fp_sa[2], isize_info_t *ii,
 					   const pe_opt_t *opt, const gap_opt_t *gopt, const isize_info_t *last_ii, int n_threads)
@@ -522,8 +529,9 @@ int bwa_cal_pac_pos_pe(const bntseq_t *bns, const char *prefix, bwt_t *const _bw
 	//read data from sai files
 	for (i = 0; i != n_seqs; ++i) {
 		for (j = 0; j < 2; ++j) {
-			unsigned int n_aln;
+			int n_aln = -1;
 			fread(&n_aln, 4, 1, fp_sa[j]);
+			check_n_aln(n_aln,i,j); //check we are reading binary file
 			if (n_aln > kv_max(d->aln[j]))
 				kv_resize(bwt_aln1_t, d->aln[j], n_aln);
 			d->aln[j].n = n_aln;
@@ -563,11 +571,12 @@ int bwa_cal_pac_pos_pe(const bntseq_t *bns, const char *prefix, bwt_t *const _bw
 	for (i = 0; i != n_seqs; ++i) {
 		bwa_seq_t *p[2];
 		for (j = 0; j < 2; ++j) {
-			int n_aln;
+			int n_aln = -1;
 			p[j] = seqs[j] + i;
 			p[j]->n_multi = 0;
 			p[j]->extra_flag |= SAM_FPD | (j == 0? SAM_FR1 : SAM_FR2);
 			fread(&n_aln, 4, 1, fp_sa[j]);
+			check_n_aln(n_aln,i,j); //check we are reading binary file
 			if (n_aln > kv_max(d->aln[j]))
 				kv_resize(bwt_aln1_t, d->aln[j], n_aln);
 			d->aln[j].n = n_aln;
@@ -1094,7 +1103,6 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 	fprintf(stderr, "[sampe_core] Processing %u read pairs at a time\n", BATCH_SIZE);
 	fprintf(stderr, "[sampe_core] Converting SA %s %s to linear sequence coordinates, please wait... \n",
 		fn_sa[0], fn_sa[1]); //both must be valid here or would have failed on xopen
-
 	if(!popt->verbose) fprintf(stderr, "[sampe_core] ");
 
 	while ((seqs[0] = bwa_read_seq(ks[0], BATCH_SIZE, &n_seqs, opt0.mode, opt0.trim_qual)) != 0) {
