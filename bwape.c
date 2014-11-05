@@ -1,3 +1,7 @@
+/*
+  2014-11-05 (0.7.0) beta: WBL Add .sai filenames to "Converting SA" diagnostic
+*/
+
 #include <unistd.h>
 #include <math.h>
 #include <stdlib.h>
@@ -1088,7 +1092,8 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 	bwa_print_sam_SQ(bns);
 	bwa_print_sam_PG();
 	fprintf(stderr, "[sampe_core] Processing %u read pairs at a time\n", BATCH_SIZE);
-	fprintf(stderr, "[sampe_core] Converting SA to linear sequence coordinates, please wait... \n");
+	fprintf(stderr, "[sampe_core] Converting SA %s %s to linear sequence coordinates, please wait... \n",
+		fn_sa[0], fn_sa[1]); //both must be valid here or would have failed on xopen
 
 	if(!popt->verbose) fprintf(stderr, "[sampe_core] ");
 
