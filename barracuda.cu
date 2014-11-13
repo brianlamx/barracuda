@@ -26,6 +26,11 @@
 
 */
 
+/*
+  2014-11-13 (0.7.0) beta: WBL ensure check status of all host cuda calls
+  Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
+*/
+
 #define PACKAGE_VERSION "0.7.0 beta"
 #include <stdio.h>
 #include <unistd.h>
@@ -38,6 +43,7 @@
 #include "bwtaln.h"
 #include "bwtgap.h"
 #include "utils.h"
+#include "assert.h"
 #include "barracuda.h"
 #include "barracuda.cuh"
 
@@ -321,15 +327,21 @@ int copy_sequences_to_cuda_memory(
 
 #endif
 
-	//copy main_sequences_width from host to device
-	cudaUnbindTexture(sequences_index_array);
+    //copy main_sequences_width from host to device
+    cudaUnbindTexture(sequences_index_array);
+    report_cuda_error_GPU("[aln_core] Error freeing texture \"sequences_index_array\".");
     cudaMemcpy(global_sequences_index, main_sequences_index, (number_of_sequences)*sizeof(uint2), cudaMemcpyHostToDevice);
+    report_cuda_error_GPU("[aln_core] Error copying to \"global_sequences_index\" on GPU");
     cudaBindTexture(0, sequences_index_array, global_sequences_index, (number_of_sequences)*sizeof(uint2));
+    report_cuda_error_GPU("[aln_core] Error binding texture \"sequences_index_array\".\n");
 
     //copy main_sequences from host to device, sequences array length should be accumulated_length/2
     cudaUnbindTexture(sequences_array);
+    report_cuda_error_GPU("[aln_core] Error freeing texture \"sequences_array\".");
     cudaMemcpy(global_sequences, main_sequences, (1ul<<(buffer))*sizeof(unsigned char), cudaMemcpyHostToDevice);
+    report_cuda_error_GPU("[aln_core] Error copying to \"global_sequences\" on GPU");
     cudaBindTexture(0, sequences_array, global_sequences, (1ul<<(buffer))*sizeof(unsigned char));
+    report_cuda_error_GPU("[aln_core] Error binding texture to \"sequences_array\".\n");
 
     if ( read_size ) *read_size = accumulated_length;
     free (seqs);
@@ -2225,6 +2237,8 @@ __global__ void cuda_split_inexact_match_caller(int no_of_sequences, unsigned sh
 }
 #endif
 
+//END CUDA DEVICE CODE
+
 // return the difference in second between two timeval structures
 double diff_in_seconds(struct timeval *finishtime, struct timeval * starttime)
 {
@@ -2350,31 +2364,48 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 	gettimeofday (&start, NULL);
 		//allocate global_sequences memory in device
 		cudaMalloc((void**)&global_sequences, (1ul<<(buffer))*sizeof(unsigned char));
+		report_cuda_error_GPU("[core] Error allocating cuda memory for \"global_sequences\".");
 		main_sequences = (unsigned char *)malloc((1ul<<(buffer))*sizeof(unsigned char));
 		//suffixes for clumping
 		main_suffixes = (unsigned long long *)malloc((1ul<<(buffer-3))*sizeof(unsigned long long));
 		//allocate global_sequences_index memory in device assume the average length is bigger the 16bp (currently -3, -4 for 32bp, -3 for 16bp)long
 		cudaMalloc((void**)&global_sequences_index, (1ul<<(buffer-3))*sizeof(uint2));
+		report_cuda_error_GPU("[core] Error allocating cuda memory for \"global_sequences_index\".");
 		main_sequences_index = (uint2*)malloc((1ul<<(buffer-3))*sizeof(uint2));
 		//allocate and copy options (opt) to device constant memory
 		cudaMalloc((void**)&options, sizeof(gap_opt_t));
+		report_cuda_error_GPU("[core] Error allocating cuda memory for \"options\".");
 		cudaMemcpy ( options, opt, sizeof(gap_opt_t), cudaMemcpyHostToDevice);
+		report_cuda_error_GPU("[aln_core] Error cudaMemcpy to \"options\" on GPU");
 		cudaMemcpyToSymbol ( options_cuda, opt, sizeof(gap_opt_t), 0, cudaMemcpyHostToDevice);
+		report_cuda_error_GPU("[aln_core] Error in cudaMemcpyToSymbol to \"options_cuda\" on GPU");
 		//allocate alignment stores for host and device
 		cudaMalloc((void**)&global_alignment_meta_device, (1ul<<(buffer-3))*sizeof(alignment_meta_t));
+		report_cuda_error_GPU("[core] Error allocating cuda memory for \"global_alignment_meta_device\".");
 		cudaMalloc((void**)&global_alns_device, MAX_NO_PARTIAL_HITS*(1ul<<(buffer-3))*sizeof(barracuda_aln1_t));
+		report_cuda_error_GPU("[core] Error allocating cuda memory for \"global_alns_device\".");
 		cudaMalloc((void**)&global_init_device, (1ul<<(buffer-3))*sizeof(init_info_t));
+		report_cuda_error_GPU("[core] Error allocating cuda memory for \"global_init_device\".");
 		cudaMalloc((void**)&global_w_b_device, (1ul<<(buffer-3))*sizeof(widths_bids_t));
-		cudaMalloc((void**)&global_seq_flag_device, (1ul<<(buffer-3))*sizeof(char));
-		//allocate alignment store memory in device assume the average length is bigger the 16bp (currently -3, -4 for 32bp, -3 for 16bp)long
+		report_cuda_error_GPU("[core] Error allocating cuda memory for \"global_w_b_device\".");
+		cudaMalloc((void**)&global_seq_flag_device, (1ul<<(buffer-3))*sizeof(char));	
+		report_cuda_error_GPU("[core] Error allocating cuda memory for \"global_seq_flag_device\".");
+	//allocate alignment store memory in device assume the average length is bigger the 16bp (currently -3, -4 for 32bp, -3 for 16bp)long
 		global_alignment_meta_host = (alignment_meta_t*)malloc((1ul<<(buffer-3))*sizeof(alignment_meta_t));
+		assert(global_alignment_meta_host);//better than segfault later
 		global_alns_host = (barracuda_aln1_t*)malloc(MAX_NO_PARTIAL_HITS*(1ul<<(buffer-3))*sizeof(barracuda_aln1_t));
+		assert(global_alns_host);
 		global_alignment_meta_host_final = (alignment_meta_t*)malloc((1ul<<(buffer-3))*sizeof(alignment_meta_t));
+		assert(global_alignment_meta_host_final);
 		global_alns_host_final = (barracuda_aln1_t*)malloc(MAX_NO_OF_ALIGNMENTS*(1ul<<(buffer-3))*sizeof(barracuda_aln1_t));
+		assert(global_alns_host_final);
 		global_init_host = (init_info_t*)malloc((1ul<<(buffer-3))*sizeof(init_info_t));
+		assert(global_init_host);
 		global_seq_flag_host = (char*)malloc((1ul<<(buffer-3))*sizeof(char));
+		assert(global_seq_flag_host);
 #if USE_PETR_SPLIT_KERNEL > 0
 		global_alignment_meta_host_final = (alignment_meta_t*)malloc((1ul<<(buffer-3))*sizeof(alignment_meta_t));
+		assert(global_alignment_meta_host_final);
 #endif
 
 	gettimeofday (&end, NULL);
@@ -2397,6 +2428,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 	char split_engage;
 	cudaDeviceProp selected_properties;
 	cudaGetDeviceProperties(&selected_properties, sel_device);
+	report_cuda_error_GPU("[core] Error on \"cudaGetDeviceProperties\".");
 	if ((int) selected_properties.major > 1) {
 		blocksize = 64;
 	} else {
@@ -2479,7 +2511,9 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		memset(global_init_host, 0, no_of_sequences*sizeof(init_info_t));
 		cudaMemcpy(global_seq_flag_host, global_seq_flag_device, no_of_sequences*sizeof(char), cudaMemcpyDeviceToHost);
+		report_cuda_error_GPU("[aln_core] Error reading \"global_seq_flag_host\" from GPU.");
 		cudaDeviceSynchronize();
+		report_cuda_error_GPU("[aln_core] cuda error");
 		unsigned int no_to_process = 0;
 		for(int i=0; i<no_of_sequences; i++){
 			if(global_seq_flag_host[i]){
@@ -2568,6 +2602,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 		fprintf(stderr, "'");
 		cudaMemcpy(global_init_device, global_init_host, no_to_process*sizeof(init_info_t), cudaMemcpyHostToDevice);
+		report_cuda_error_GPU("[aln_core] Error copying \"global_init_host\" to GPU.");
 		//cuda_find_exact_matches writes straight to global_init_device so we can launch the first kernel and then deal with global_seq_flag_device
 		cuda_inexact_match_caller<<<dimGrid,dimBlock>>>(global_bwt, no_to_process, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, SUFFIX_CLUMP_WIDTH>0);
 		fprintf(stderr, "'");
@@ -2586,6 +2621,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		fprintf(stderr,"\n[aln_debug] kernel started, waiting for data... \n", time_used);
 #endif
 		// Did we get an error running the code? Abort if yes.
+		cudaDeviceSynchronize(); //wait until kernel has had a chance to report error
 		cuda_err = cudaGetLastError();
 		if(int(cuda_err))
 		{
@@ -2627,13 +2663,17 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		int split_loop_count = 0;
 		do {
 			cudaDeviceSynchronize();
+			report_cuda_error_GPU("[aln_core] cuda error_2.");
 			if(!split_loop_count){
 				fprintf(stderr, "'");
 			}
 			cudaMemcpy(global_alignment_meta_host, global_alignment_meta_device, no_to_process*sizeof(alignment_meta_t), cudaMemcpyDeviceToHost);
+			report_cuda_error_GPU("[aln_core] Error reading \"global_alignment_meta_host\" from GPU.");
 			int max_no_partial_hits = (!split_loop_count ? MAX_NO_SEEDING_PARTIALS : MAX_NO_REGULAR_PARTIALS);
 			cudaMemcpy(global_alns_host, global_alns_device, max_no_partial_hits*no_to_process*sizeof(barracuda_aln1_t), cudaMemcpyDeviceToHost);
+			report_cuda_error_GPU("[aln_core] Error reading \"global_alns_host\" from GPU.");
 			cudaDeviceSynchronize();
+			report_cuda_error_GPU("[aln_core] cuda error_3.");
 			if(!split_engage) break;
 
 #if ARRAN_DEBUG_LEVEL > 0
@@ -2783,10 +2823,12 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		fprintf(stderr, "\n[aln_core][split_process] no_to_process: %i", no_to_process);
 #endif
 				cudaMemcpy(global_init_device, global_init_host, no_to_process*sizeof(init_info_t), cudaMemcpyHostToDevice);
+				report_cuda_error_GPU("[aln_core] Error_2 copying \"global_init_host\" to GPU.");
 
 				int gridsize = GRID_UNIT * (1 + int (((no_to_process/blocksize) + ((no_to_process%blocksize)!=0))/GRID_UNIT));
 				dim3 dimGrid(gridsize);
 				cuda_inexact_match_caller<<<dimGrid,dimBlock>>>(global_bwt, no_to_process, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, 0);
+				cudaDeviceSynchronize(); //wait until kernel has had a chance to report error
 				cuda_err = cudaGetLastError();
 				if(int(cuda_err))
 				{
@@ -2900,6 +2942,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 		// copy the initialised alignment store to the device
 		cudaMemcpy (global_alignment_meta_device,global_alignment_meta_host, no_of_sequences*sizeof(alignment_meta_t), cudaMemcpyHostToDevice);
+		report_cuda_error_GPU("[aln_core] Error copying \"global_alignment_meta_host\" to GPU.");
 
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		// Core match function per sequence readings
@@ -2922,6 +2965,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		fprintf(stderr,"[aln_debug] kernels return \n", time_used);
 
 		// Did we get an error running the code? Abort if yes.
+		cudaDeviceSynchronize(); //wait until kernel has had a chance to report error
 		cudaError_t cuda_err = cudaGetLastError();
 		if(int(cuda_err))
 		{
@@ -2948,6 +2992,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		{
 			fprintf(stderr,".");
 			cudaMemcpy (global_alignment_meta_host, global_alignment_meta_device, no_of_sequences*sizeof(alignment_meta_t), cudaMemcpyDeviceToHost);
+			report_cuda_error_GPU("[aln_core] Error_2 reading \"global_alignment_meta_host\" from GPU.");
 
 			// go through the aligned sequeces and decide which ones are finished and which are not
 			int aligned=0;
@@ -3102,9 +3147,19 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 				// transfer the data to the card again
 				cudaMemcpy (global_alignment_meta_device,global_alignment_meta_host, no_of_sequences*sizeof(alignment_meta_t), cudaMemcpyHostToDevice);
+				report_cuda_error_GPU("[aln_core] Error_2 copying \"global_alignment_meta_host\" to GPU.");
 
 				//run kernel again
 				cuda_split_inexact_match_caller<<<dimGrid,dimBlock>>>(no_of_sequences, max_sequence_length, global_alignment_meta_device, 0);
+
+				// Did we get an error running the code? Abort if yes.
+				cudaDeviceSynchronize(); //wait until kernel has had a chance to report error
+				cudaError_t cuda_err = cudaGetLastError();
+				if(int(cuda_err))
+				  {
+				    fprintf(stderr, "\n[aln_core] CUDA ERROR(s) reported! Last CUDA error message: %s\n[aln_core] Abort!\n", cudaGetErrorString(cuda_err));
+				    return;
+				  }
 
 			}
 			else {
@@ -3290,6 +3345,7 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 	cudaDeviceProp properties;
 	int num_devices;
 	cudaGetDeviceCount(&num_devices);
+	report_cuda_error_GPU("[core] Error on cudaGetDeviceCount");
 
 	if (!num_devices)
 	{
@@ -3304,7 +3360,9 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 		if(sel_device >= 0)
 		{
 			cudaSetDevice(sel_device);
+			report_cuda_error_GPU("[core] Error on cudaSetDevice");
 			cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+			report_cuda_error_GPU("[core] Error on cudaFuncCachePreferL1");
 		}
 		else
 		{
@@ -3316,9 +3374,13 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 	{
 		 sel_device = opt->cuda_device;
 		 cudaSetDevice(sel_device);
+		 report_cuda_error_GPU("[core] Error_2 on cudaSetDevice");
 		 cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
+		 report_cuda_error_GPU("[core] Error_2 on cudaFuncCachePreferL1");
 		 cudaGetDeviceProperties(&properties, sel_device);
+		 report_cuda_error_GPU("[core] Error on cudaGetDeviceProperties");
 		 cudaMemGetInfo(&mem_available, &total_mem);
+		 report_cuda_error_GPU("[core] Error on cudaMemGetInfo");
 
 		 fprintf(stderr, "[aln_core] Using specified CUDA device %d, memory available %d MB.\n", sel_device, int(mem_available>>20));
 
@@ -3337,6 +3399,7 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 	unsigned long long bwt_read_size = 0;
 
 	cudaMemGetInfo(&mem_available, &total_mem);
+		 report_cuda_error_GPU("[core] Error_2 on cudaMemGetInfo");
 	fprintf(stderr,"[aln_core] Loading BWTs, please wait..\n");
 
 	bwt_read_size = copy_bwts_to_cuda_memory(prefix, &global_bwt, mem_available>>20, &seq_len)>>20;
@@ -3359,6 +3422,7 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 
 	//Set memory buffer according to memory available
 	cudaMemGetInfo(&mem_available, &total_mem);
+	report_cuda_error_GPU("[core] Error_3 on cudaMemGetInfo");
 
 	#if DEBUG_LEVEL > 0
 	fprintf(stderr,"[aln_debug] mem left: %d MiB\n", int(mem_available>>20));
@@ -3398,6 +3462,7 @@ int bwa_deviceQuery()
 {
 	int device, num_devices;
 	cudaGetDeviceCount(&num_devices);
+	report_cuda_error_GPU("[core] Error_2 on cudaGetDeviceCount");
 	if (num_devices)
 		{
 			  //fprintf(stderr,"[deviceQuery] Querying CUDA devices:\n");
@@ -3405,6 +3470,7 @@ int bwa_deviceQuery()
 			  {
 					  cudaDeviceProp properties;
 					  cudaGetDeviceProperties(&properties, device);
+					  report_cuda_error_GPU("[core] Error_3 on cudaGetDeviceProperties");
 					  fprintf(stdout, "%d ", device);
 					  fprintf(stdout, "%d %d%d\n", int(properties.totalGlobalMem>>20), int(properties.major),  int(properties.minor));
 
@@ -3422,6 +3488,7 @@ int detect_cuda_device()
 		   //total_mem = 0,
 		   max_mem_available = 0;
 	cudaGetDeviceCount(&num_devices);
+	report_cuda_error_GPU("[detect_cuda_device] Error_3 on cudaGetDeviceCount");
 	cudaDeviceProp properties;
 	int sel_device = -1;
 
@@ -3432,6 +3499,7 @@ int detect_cuda_device()
 		 for (device = 0; device < num_devices; device++)
 		 {
 			  cudaGetDeviceProperties(&properties, device);
+			  report_cuda_error_GPU("[detect_cuda_device] Error_4 on cudaGetDeviceCount");
 			  mem_available = properties.totalGlobalMem;
 			  //cudaMemGetInfo(&mem_available, &total_mem);
 			  fprintf(stderr, "[detect_cuda_device]   Device %d ", device);
@@ -3541,7 +3609,9 @@ int prepare_bwa_cal_pac_pos_cuda1(
     size_t mem_available,total_mem;
 
     cudaSetDevice(device);
+    report_cuda_error_GPU("[samse_core] Error on cudaSetDevice");
     cudaMemGetInfo(&mem_available, &total_mem);
+    report_cuda_error_GPU("[samse_core] Error on cudaMemGetInfo");
 
     ////////////////////////////////////////////////////////////
     // Load BWT to GPU.
@@ -3562,12 +3632,16 @@ int prepare_bwa_cal_pac_pos_cuda1(
 			{
 				//Allocate memory for bwt
 				cudaMalloc((void**)global_bwt, bwt->bwt_size*sizeof(uint32_t));
+				report_cuda_error_GPU("[samse_core] Error allocating memory for \"global_bwt\"");
 				//copy bwt occurrence array from host to device and dump the bwt to save CPU memory
 				cudaMemcpy (*global_bwt, bwt->bwt, bwt->bwt_size*sizeof(uint32_t), cudaMemcpyHostToDevice);
+				report_cuda_error_GPU("[samse_core] Error copying \"bwt\" to GPU.\n");
 				//bind global variable bwt to texture memory bwt_occ_array
 				cudaBindTexture(0, bwt_occ_array, *global_bwt, bwt->bwt_size*sizeof(uint32_t));
+				report_cuda_error_GPU("[samse_core] Error binding texture \"bwt_occ_array\".\n");
 				//copy bwt structure data to constant memory bwt_cuda structure
 				cudaMemcpyToSymbol ( bwt_cuda, bwt, sizeof(bwt_t), 0, cudaMemcpyHostToDevice);
+				report_cuda_error_GPU("[samse_core] Error \"copy bwt\" to GPU constant memory");
 			}
 			else
 			{
@@ -3595,12 +3669,16 @@ int prepare_bwa_cal_pac_pos_cuda1(
 			{
 				//Allocate memory for rbwt
 				cudaMalloc((void**)global_rbwt, rbwt->bwt_size*sizeof(uint32_t));
+				report_cuda_error_GPU("[samse_core] Error on allocating cuda memory for \"global_rbwt\"");
 				//copy reverse bwt occurrence array from host to device and dump the bwt to save CPU memory
 				cudaMemcpy (*global_rbwt, rbwt->bwt, rbwt->bwt_size*sizeof(uint32_t), cudaMemcpyHostToDevice);
+				report_cuda_error_GPU("[samse_core] Error copying rbwt->bwt to GPU.");
 				//bind global variable rbwt to texture memory rbwt_occ_array
 				cudaBindTexture(0, rbwt_occ_array, *global_rbwt, rbwt->bwt_size*sizeof(uint32_t));
+				report_cuda_error_GPU("[samse_core] Error binding texture \"rbwt_occ_array\".");
 				//copy rbwt structure data to constant memory bwt_cuda structure
 				cudaMemcpyToSymbol ( rbwt_cuda, rbwt, sizeof(bwt_t), 0, cudaMemcpyHostToDevice);
+				report_cuda_error_GPU("[samse_core] Error copying \"rbwt\" to GPU constant memory");
 			}
 			else
 			{
@@ -3708,6 +3786,7 @@ void prepare_bwa_cal_pac_pos_cuda2(int n_seqs_max)
 	size_t mem_available, total_mem;
 
 	cudaMemGetInfo(&mem_available, &total_mem);
+	report_cuda_error_GPU("[samse_core] Error_2 on cudaMemGetInfo");
 
 #if DEBUG_LEVEL > 0
 	fprintf(stderr,"[samse_debug] sequence loaded loaded mem left: %d MB\n", (int)(mem_available>>20));
@@ -3790,7 +3869,7 @@ void launch_bwa_cal_pac_pos_cuda(
 
 	// Obtain information on CUDA devices.
 	cudaGetDeviceProperties(&prop, device);
-
+	report_cuda_error_GPU("[samse_core] Error on \"cudaGetDeviceProperties\".");
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////
 	// Allocate memory and copy reads in "seqs" to "seqs_maxdiff_mapQ_ho" and "seqs_sa_ho".
@@ -3852,6 +3931,7 @@ void launch_bwa_cal_pac_pos_cuda(
 		fnr);
 
 	report_cuda_error_GPU("[samse_core] Error running \"cuda_bwa_cal_pac_pos()\".\n");
+	cudaDeviceSynchronize(); //wait until kernel has had a chance to report error
 	cudaThreadSynchronize();
 	report_cuda_error_GPU("[samse_core] Error synchronizing after \"cuda_bwa_cal_pac_pos()\".\n");
 
@@ -3878,6 +3958,7 @@ void launch_bwa_cal_pac_pos_cuda(
 	}
 }
 
+//CUDA DEVICE CODE STARTING FROM THIS LINE
 // This function does not work because the pointer b->bwt is not set.
 __device__ uint32_t _bwt_bwt(const bwt_t *b, bwtint_t k)
 {
@@ -4518,5 +4599,7 @@ void cuda_bwa_cal_pac_pos_parallel2(
 ///////////////////////////////////////////////////////////////
 // End CUDA samse_core
 ///////////////////////////////////////////////////////////////
+
+//END CUDA DEVICE CODE
 
 
