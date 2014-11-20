@@ -27,11 +27,13 @@
 */
 
 /*
-  2014-11-13 (0.7.0) beta: WBL ensure check status of all host cuda calls
-  Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
+> /* (0.7.0) beta: 
+  19 Nov 2014 WBL merge text and binary output, ie add stdout_aln_head stdout_barracuda_aln1
+                  Explicitly clear unused parts of alignment records in binary .sai output file
+  13 Nov 2014 WBL ensure check status of all host cuda calls
 */
 
-#define PACKAGE_VERSION "0.7.0 beta"
+#define PACKAGE_VERSION "0.7.0 beta WBL2 $Revision: 1.9 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -2303,6 +2305,45 @@ void add_to_process_queue(init_bin_list * bin, barracuda_aln1_t * aln, alignment
 	to_queue->cur_n_gape = aln->n_gape;
 }
 
+void stdout_aln_head(const int id, const int* no_of_alignments) {
+#if STDOUT_STRING_RESULT == 1
+  //output even if no_of_alignments <=0 
+  printf("Sequence %d", id);
+  printf(", no of alignments: %d\n", *no_of_alignments);
+#else
+  err_fwrite(no_of_alignments, 4, 1, stdout);
+#endif
+}
+
+#if STDOUT_STRING_RESULT == 1
+//ignore nmemb < MAX_NO_OF_ALIGNMENTS limit
+#define stdout_aln1(type,opt_best_cnt)	\
+  for(size_t i=0; i<nmemb; i++) {\
+    printf("  Aligned read, ");\
+    printf("n_mm: %d, ",   aln[i].n_mm);\
+    printf("n_gape: %d, ", aln[i].n_gape);\
+    printf("n_gapo: %d, ", aln[i].n_gapo);\
+    printf("k: %llu, ",    aln[i].k);\
+    printf("l: %llu, ",    aln[i].l);\
+    printf("score: %d",    aln[i].score);\
+    opt_best_cnt;\
+    printf("\n");\
+  }
+#else
+#define stdout_aln1(type,opt_best_cnt) \
+  err_fwrite(aln, sizeof(type), nmemb, stdout);
+#endif
+
+void stdout_bwt_aln1(      const bwt_aln1_t       *aln, const size_t nmemb) {
+  //fprintf(stderr,"stdout_bwt_aln1(*aln, %d) %dbytes\n",nmemb,sizeof(bwt_aln1_t));
+  stdout_aln1(bwt_aln1_t,);
+}
+void stdout_barracuda_aln1(const barracuda_aln1_t *aln, const size_t nmemb) {
+  //fprintf(stderr,"stdout_barracuda_aln1(*aln, %d) %dbytes\n",nmemb,sizeof(barracuda_aln1_t));
+  stdout_aln1(barracuda_aln1_t,printf("best_cnt: %d", aln[i].best_cnt));
+}
+#undef stdout_aln1
+
 void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *ks, double total_time_used, uint32_t *global_bwt)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Core loop (this loads sequences to host memory, transfers to cuda device and aligns via cuda in CUDA blocks)
@@ -3180,39 +3221,6 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		else
 			fprintf(stderr,"[aln_debug] Writing alignment to disk in old barracuda format...");
 #endif
-
-
-		#if STDOUT_STRING_RESULT == 1
-		for (int i = 0; i < run_no_sequences; i++)
-		{
-			alignment_meta_t* tmp = global_alignment_meta_host + i;
-
-			if (tmp->no_of_alignments > 0)
-			{
-			printf("Sequence %d", i);//tmp->sequence_id);
-			printf(", no of alignments: %d\n", tmp->no_of_alignments);
-
-				barracuda_aln1_t *tmp_aln = global_alns_host_final + i;
-				for (int j = 0; j < tmp->no_of_alignments && j < MAX_NO_OF_ALIGNMENTS; j++)
-				{
-					//printf("  Aligned read %d, ",j+1);
-					printf("  Aligned read, ");
-					//printf("a: %d, ", tmp->alignment_info[j].a);
-					printf("n_mm: %d, ", tmp_aln[j].n_mm);
-					printf("n_gape: %d, ", tmp_aln[j].n_gape);
-					printf("n_gapo: %d, ", tmp_aln[j].n_gapo);
-					printf("k: %llu, ", tmp_aln[j].k);
-					printf("l: %llu, ", tmp_aln[j].l);
-					printf("score: %u\n", tmp_aln[j].score);
-				}
-			}
-
-
-		}
-		//}
-		#endif // STDOUT_STRING_RESULT == 1
-
-		#if STDOUT_BINARY_RESULT == 1
 		for (int  i = 0; i < run_no_sequences; ++i)
 		{
 #if USE_PETR_SPLIT_KERNEL > 0
@@ -3220,7 +3228,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 #else
 			alignment_meta_t* tmp = global_alignment_meta_host + i;
 #endif
-			err_fwrite(&tmp->no_of_alignments, 4, 1, stdout);
+			stdout_aln_head(i,&tmp->no_of_alignments);
 			if (tmp->no_of_alignments)
 			{
 				unsigned long long aln_offset = i*MAX_NO_OF_ALIGNMENTS;
@@ -3229,6 +3237,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 				{
 					bwt_aln1_t * output;
 					output = (bwt_aln1_t*)malloc(tmp->no_of_alignments*sizeof(bwt_aln1_t));
+					memset(output,0,tmp->no_of_alignments*sizeof(bwt_aln1_t));//avoid undefined bytes in .sai files
 
 					for (int j = 0; j < tmp->no_of_alignments; j++)
 					{
@@ -3243,12 +3252,13 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 						temp_output->score = tmp_aln->score;
 					}
 					if(tmp->no_of_alignments > 1) aln_quicksort(output,0,tmp->no_of_alignments-1);
-					err_fwrite(output, sizeof(bwt_aln1_t), tmp->no_of_alignments, stdout);
+					stdout_bwt_aln1(output, tmp->no_of_alignments);
 					free(output);
 				}else
 				{
 					barracuda_aln1_t * output;
 					output = (barracuda_aln1_t*)malloc(tmp->no_of_alignments*sizeof(barracuda_aln1_t));
+					memset(output,0,tmp->no_of_alignments*sizeof(barracuda_aln1_t)); //avoid undefined bytes in .sai files
 
 					for (int j = 0; j < tmp->no_of_alignments; j++)
 					{
@@ -3262,13 +3272,11 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 						temp_output->n_gape = tmp_aln->n_gape;
 						temp_output->score = tmp_aln->score;
 					}
-					fwrite(output, sizeof(barracuda_aln1_t), tmp->no_of_alignments, stdout);
+					stdout_barracuda_aln1(output, tmp->no_of_alignments);
 					free(output);
 				}
 			}
 		}
-
-		#endif // STDOUT_BINARY_RESULT == 1
 
 		gettimeofday (&end, NULL);
 		time_used = diff_in_seconds(&end,&start);
@@ -3328,7 +3336,7 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 	double total_time_used = 0;
 
 
-	fprintf(stderr,"[aln_core] Running CUDA mode.\n");
+	fprintf(stderr,"[aln_core] Running %s CUDA mode.\n",PACKAGE_VERSION);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//CUDA options
