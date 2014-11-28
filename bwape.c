@@ -1,4 +1,5 @@
 /*
+  2014-11-28 (0.7.0) beta: WBL Add err_fread() and checking fn_sa have same numbers of query sequences
   2014-11-05 (0.7.0) beta: WBL Add .sai filenames to "Converting SA" diagnostic
   and check_n_aln() Cf. Brian Lam email Wed, Nov 5, 2014 at 12:06 PM
 */
@@ -9,6 +10,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 #include "bwtaln.h"
 #include "kvec.h"
 #include "bntseq.h"
@@ -498,6 +500,15 @@ static void *sampe_se_worker(void *data)
 
 #endif //HAVE_PTHREAD
 
+int err_fread(const void *ptr, size_t size, size_t nobj, FILE *stream) {
+  if(feof(stream))   err_fatal_simple_core("fread", "already at end of file");
+  const size_t n = fread(ptr,size,nobj,stream);
+  const int saveErrno = errno;
+  if(ferror(stream)) err_fatal_simple_core("fread", strerror(saveErrno));
+  if(n < nobj)       err_fatal_simple_core("fread", "not enough data read");
+  return n;
+}
+
 void check_n_aln(const int n_aln, const int i, const int j) {
   //can fail this if sai file was created with version without STDOUT_BINARY_RESULT
   if(n_aln<0 || n_aln>255) //min zero, max seen 39
@@ -530,12 +541,12 @@ int bwa_cal_pac_pos_pe(const bntseq_t *bns, const char *prefix, bwt_t *const _bw
 	for (i = 0; i != n_seqs; ++i) {
 		for (j = 0; j < 2; ++j) {
 			int n_aln = -1;
-			fread(&n_aln, 4, 1, fp_sa[j]);
+			err_fread(&n_aln, 4, 1, fp_sa[j]);
 			check_n_aln(n_aln,i,j); //check we are reading binary file
 			if (n_aln > kv_max(d->aln[j]))
 				kv_resize(bwt_aln1_t, d->aln[j], n_aln);
 			d->aln[j].n = n_aln;
-			fread(d->aln[j].a, sizeof(bwt_aln1_t), n_aln, fp_sa[j]);
+			err_fread(d->aln[j].a, sizeof(bwt_aln1_t), n_aln, fp_sa[j]);
 			kv_copy(bwt_aln1_t, buf[j][i].aln, d->aln[j]); // backup d->aln[j]
 		}
 	}
@@ -575,12 +586,12 @@ int bwa_cal_pac_pos_pe(const bntseq_t *bns, const char *prefix, bwt_t *const _bw
 			p[j] = seqs[j] + i;
 			p[j]->n_multi = 0;
 			p[j]->extra_flag |= SAM_FPD | (j == 0? SAM_FR1 : SAM_FR2);
-			fread(&n_aln, 4, 1, fp_sa[j]);
+			err_fread(&n_aln, 4, 1, fp_sa[j]);
 			check_n_aln(n_aln,i,j); //check we are reading binary file
 			if (n_aln > kv_max(d->aln[j]))
 				kv_resize(bwt_aln1_t, d->aln[j], n_aln);
 			d->aln[j].n = n_aln;
-			fread(d->aln[j].a, sizeof(bwt_aln1_t), n_aln, fp_sa[j]);
+			err_fread(d->aln[j].a, sizeof(bwt_aln1_t), n_aln, fp_sa[j]);
 			kv_copy(bwt_aln1_t, buf[j][i].aln, d->aln[j]); // backup d->aln[j]
 			// generate SE alignment and mapping quality
 			bwa_aln2seq(n_aln, d->aln[j].a, p[j]);
@@ -1049,10 +1060,10 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 	double time_used = 0, total_time_used = 0;
 	gettimeofday (&start, NULL);
 
-	fread(&opt, sizeof(gap_opt_t), 1, fp_sa[0]);
+	err_fread(&opt, sizeof(gap_opt_t), 1, fp_sa[0]);
 	ks[0] = bwa_open_reads(opt.mode, fn_fa[0]);
 	opt0 = opt;
-	fread(&opt, sizeof(gap_opt_t), 1, fp_sa[1]); // overwritten!
+	err_fread(&opt, sizeof(gap_opt_t), 1, fp_sa[1]); // overwritten!
 	ks[1] = bwa_open_reads(opt.mode, fn_fa[1]);
 	if (!(opt.mode & BWA_MODE_COMPREAD)) {
 		popt->type = BWA_PET_SOLID;
@@ -1065,7 +1076,7 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 			strcpy(str, prefix); strcat(str, ".sa"); bwt_restore_sa(str, bwt);
 			pac = (ubyte_t*)calloc(bns->l_pac/4+1, 1);
 			rewind(bns->fp_pac);
-			fread(pac, 1, bns->l_pac/4+1, bns->fp_pac);
+			err_fread(pac, 1, bns->l_pac/4+1, bns->fp_pac);
 			gettimeofday (&end, NULL);
 			time_used = diff_in_seconds(&end,&start);
 			total_time_used += time_used;
@@ -1109,9 +1120,15 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 
 		isize_info_t ii;
 		ubyte_t *pacseq = 0;
+		int n_seqs1 = 0;
 
 		gettimeofday (&start, NULL);
-		seqs[1] = bwa_read_seq(ks[1], BATCH_SIZE, &n_seqs, opt.mode, opt.trim_qual);
+		seqs[1] = bwa_read_seq(ks[1], BATCH_SIZE, &n_seqs1, opt.mode, opt.trim_qual);
+		if(n_seqs!=n_seqs1) {
+		  fprintf(stderr, "[sampe_core] SA %s %s have different numbers of sequences %d %d\n",
+			  fn_sa[0], fn_sa[1], n_seqs, n_seqs1);
+		  abort();
+		}
 		tot_seqs += n_seqs;
 		t = clock();
 
@@ -1129,7 +1146,7 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 		if(!pacseq){
 			pacseq = (ubyte_t*)calloc(bns->l_pac/4+1, 1);
 			rewind(bns->fp_pac);
-			fread(pacseq, 1, bns->l_pac/4+1, bns->fp_pac);
+			err_fread(pacseq, 1, bns->l_pac/4+1, bns->fp_pac);
 		}
 
 #ifdef HAVE_PTHREAD
