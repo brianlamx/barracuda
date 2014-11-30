@@ -26,14 +26,18 @@
 
 */
 
-/*
-> /* (0.7.0) beta: 
+/* (0.7.0) beta: 
+  25 Nov 2014 WBL Re-enable cuda_find_exact_matches changes. Note where sequence matches exactly once no longer report other potential matches
+  21 Nov 2014 WBL disable cuda_find_exact_matches changes and add <<<>>> logging comments
+                  Add header to text .sai file
   19 Nov 2014 WBL merge text and binary output, ie add stdout_aln_head stdout_barracuda_aln1
                   Explicitly clear unused parts of alignment records in binary .sai output file
+  13 Nov 2014 WBL try re-enabling cuda_find_exact_matches
   13 Nov 2014 WBL ensure check status of all host cuda calls
+  Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
 */
 
-#define PACKAGE_VERSION "0.7.0 beta WBL2 $Revision: 1.9 $"
+#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.24 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -680,7 +684,7 @@ __device__ int bwt_cuda_match_exact( uint32_t * global_bwt, unsigned int length,
 	{
 		unsigned char c = str[i];
 		if (c > 3){
-			//printf("no exact match found, c>3\n");
+		  //printf("thread %d,%d k:%lu l:%lu no exact match found, c>3\n",blockIdx.x,threadIdx.x,k,l);
 			return 0; // there is an N here. no match
 		}
 
@@ -698,7 +702,7 @@ __device__ int bwt_cuda_match_exact( uint32_t * global_bwt, unsigned int length,
 		// no match
 		if (k > l)
 		{
-			//printf("no exact match found, k>l\n");
+		  //printf("thread %d,%d k:%lu l:%lu no exact match found, k>l\n",blockIdx.x,threadIdx.x,k,l);
 			return 0;
 		}
 
@@ -706,7 +710,7 @@ __device__ int bwt_cuda_match_exact( uint32_t * global_bwt, unsigned int length,
 	*k0 = k;
 	*l0 = l;
 
-	//printf("exact match found: %u\n",(l-k+1));
+	//printf("thread %d,%d k:%lu l:%lu exact match found: %u\n",blockIdx.x,threadIdx.x,k,l,(l-k+1));
 
 	return (int)(l - k + 1);
 }
@@ -1985,35 +1989,56 @@ __global__ void cuda_prepare_widths(uint32_t * global_bwt, int no_of_sequences, 
 	return;
 }
 
-__global__ void cuda_find_exact_matches(uint32_t * global_bwt, int no_of_sequences, init_info_t* global_init, char* global_has_exact)
+typedef struct {
+  bwtint_t k;
+  bwtint_t l;
+} bwtkl_t;
+
+__global__ void cuda_find_exact_matches(/*const*/ uint32_t * global_bwt, const int no_of_sequences, 
+					bwtkl_t* kl_device)
+//init_info_t* global_init, char* global_has_exact)
 {
+	//WBL re-enabling cuda_find_exact_matches
+	//use k and l to signal if exact match or not and return them for use in global alns
+
 	//***EXACT MATCH CHECK***
 	//everything that has been commented out in this function should be re-activated if being used
 	//comments are only to stop compilation warnings
 	unsigned int blockId = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if ( blockId < no_of_sequences ) {
-		//unsigned char local_complemented_sequence[SEQUENCE_HOLDER_LENGTH];
-		init_info_t local_init;
-		local_init = global_init[blockId];
+		unsigned char local_complemented_sequence[MAX_SEQUENCE_LENGTH]; //was SEQUENCE_HOLDER_LENGTH];
+		//init_info_t local_init;
+		//local_init = global_init[blockId];
 
-		const uint2 sequence_info = tex1Dfetch(sequences_index_array, local_init.sequence_id);
+		const uint2 sequence_info = tex1Dfetch(sequences_index_array, blockId);//local_init.sequence_id);
 
 		const unsigned int sequence_offset = sequence_info.x;
 		const unsigned short sequence_length = sequence_info.y;
 		unsigned int last_read = ~0;
 		unsigned int last_read_data = 0;
 
+		if(sequence_length>MAX_SEQUENCE_LENGTH) {
+		  printf("thread %d,%d i=%d exceeds MAX_SEQUENCE_LENGTH\n",
+			 blockIdx.x,threadIdx.x,sequence_length);
+		  return;
+		}
+
 		for (int i = 0; i < sequence_length; i++){
 			unsigned char c = read_char(sequence_offset + i, &last_read, &last_read_data );
 			if(c>3){
+			  bwtkl_t tmp_kl = {0,bwt_cuda.seq_len};
+			  kl_device[blockId] = tmp_kl;
 				return;
 			}
-			//local_complemented_sequence[i] = 3 - c;
+			local_complemented_sequence[i] = 3 - c;
 		}
 
-		//bwtint_t k = 0, l = bwt_cuda.seq_len;
+		bwtint_t k = 0, l = bwt_cuda.seq_len;
 		//global_init[blockId].has_exact = global_has_exact[local_init.sequence_id] = bwt_cuda_match_exact(global_bwt, sequence_length, local_complemented_sequence, &k, &l)>0 ? 1 : 0;
+		bwt_cuda_match_exact(global_bwt, sequence_length, local_complemented_sequence, &k, &l);
+		bwtkl_t tmp_kl = {k,l};
+		kl_device[blockId] = tmp_kl;
 	}
 	return;
 }
@@ -2397,6 +2422,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 #if USE_PETR_SPLIT_KERNEL > 0
 		alignment_meta_t * global_alignment_meta_host_final;
 #endif
+		bwtkl_t * kl_device, *kl_host;
 
 
 
@@ -2431,6 +2457,10 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		report_cuda_error_GPU("[core] Error allocating cuda memory for \"global_w_b_device\".");
 		cudaMalloc((void**)&global_seq_flag_device, (1ul<<(buffer-3))*sizeof(char));	
 		report_cuda_error_GPU("[core] Error allocating cuda memory for \"global_seq_flag_device\".");
+
+		cudaMalloc((void**)&kl_device, (1ul<<(buffer-3))*sizeof(bwtkl_t));	
+		report_cuda_error_GPU("[core] Error allocating cuda memory for \"kl_device\".");
+
 	//allocate alignment store memory in device assume the average length is bigger the 16bp (currently -3, -4 for 32bp, -3 for 16bp)long
 		global_alignment_meta_host = (alignment_meta_t*)malloc((1ul<<(buffer-3))*sizeof(alignment_meta_t));
 		assert(global_alignment_meta_host);//better than segfault later
@@ -2448,6 +2478,8 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		global_alignment_meta_host_final = (alignment_meta_t*)malloc((1ul<<(buffer-3))*sizeof(alignment_meta_t));
 		assert(global_alignment_meta_host_final);
 #endif
+		kl_host = (bwtkl_t*)malloc((1ul<<(buffer-3))*sizeof(bwtkl_t));
+		assert(kl_host);
 
 	gettimeofday (&end, NULL);
 	time_used = diff_in_seconds(&end,&start);
@@ -2503,6 +2535,10 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 #endif
 			fprintf(stderr,"[aln_core] Processing %d sequence reads at a time.\n[aln_core] ", (gridsize*blocksize)) ;
 		}
+		fprintf(stderr, "l%d", loopcount);
+#if STDOUT_STRING_RESULT == 1
+		fprintf(stdout, "loopcount %d\n", loopcount);
+#endif
 
 		gettimeofday (&end, NULL);
 		time_used = diff_in_seconds(&end,&start);
@@ -2538,6 +2574,8 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		//in this case, seq_flag is used to note sequences that have too many N characters
 		cuda_prepare_widths<<<dimGrid,dimBlock>>>(global_bwt, no_of_sequences, global_w_b_device, global_seq_flag_device);
+		//fprintf(stderr,"cuda_prepare_widths<<<(%d,%d,%d)(%d,%d,%d)>>>(global_bwt, %d, global_w_b_device, global_seq_flag_device)\n",
+		//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_of_sequences);
 
 		cudaDeviceSynchronize();
 		cuda_err = cudaGetLastError();
@@ -2547,7 +2585,22 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 			return;
 		}
 
+		//WBL re-enabled cuda_find_exact_matches with new KL output
+		//fprintf(stderr, "cuda_find_exact_matches<<<(%d,%d,%d)(%d,%d,%d)>>>(global_bwt, %d, kl_device)\n",
+		//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_of_sequences);
+		cuda_find_exact_matches<<<dimGrid,dimBlock>>>(global_bwt, no_of_sequences, kl_device);
+		cudaDeviceSynchronize();
+		cuda_err = cudaGetLastError();
+		if(int(cuda_err))
+		{
+			fprintf(stderr, "\n[aln_core] CUDA ERROR(s) reported during exact match pre-check! Last CUDA error message: %s\n[aln_core] Abort!\n", cudaGetErrorString(cuda_err));
+			return;
+		}
+		cudaMemcpy(kl_host, kl_device, no_of_sequences*sizeof(bwtkl_t), cudaMemcpyDeviceToHost);
+		report_cuda_error_GPU("[aln_core] Error reading \"kl_host\" from GPU.");
+
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		// Exclude exact unique matches and
 		// Cull for too many Ns
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 		memset(global_init_host, 0, no_of_sequences*sizeof(init_info_t));
@@ -2557,6 +2610,23 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		report_cuda_error_GPU("[aln_core] cuda error");
 		unsigned int no_to_process = 0;
 		for(int i=0; i<no_of_sequences; i++){
+		    //use K,L values to note sequences that have a unique exact match - allows setting of best_score=0 and skiping rest of processing
+			if(kl_host[i].k == kl_host[i].l) {
+		    //save k and l, clear rest (n_mm etc)
+				barracuda_aln1_t * tmp_aln = global_alns_host_final + i*MAX_NO_OF_ALIGNMENTS;
+				memset(tmp_aln,0,sizeof(barracuda_aln1_t)); //clear n_mm, n_gapo,n_gape, score, best_cnt
+				memcpy(&(tmp_aln->k),&kl_host[i].k,sizeof(bwtkl_t));
+				//tmp_aln->n_mm = 100+loopcount; //for debug
+		    //make sure sequence is marked so not processed again
+				memset(global_alignment_meta_host_final + i, 0, sizeof(alignment_meta_t));		    
+				global_alignment_meta_host_final[i].no_of_alignments = 1;
+				//best_score = 0;
+				global_alignment_meta_host_final[i].sequence_id = i;
+				global_alignment_meta_host_final[i].best_cnt = 1;
+				//char pos = 0;
+				global_alignment_meta_host_final[i].finished = 1;
+				//fprintf(stderr, "global_alignment_meta_host_final[%d].sequence_id = %d\n",i,global_alignment_meta_host_final[i].sequence_id);
+			} else
 			if(global_seq_flag_host[i]){
 				memset(global_alignment_meta_host_final + i, 0, sizeof(alignment_meta_t));
 				global_alignment_meta_host_final[i].sequence_id = i;
@@ -2623,34 +2693,19 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 		}
 
-		////////////////////////////////////////////////////////////////////////////
-		// Checking for exact matches using bwt_cuda_match_exact() allows best_score to be set to 0 from the outset
-		// which theoretically culls the DFS tree further. However, it is empirically slower on SRR063699_1.
-		// Code has been left here to give a guide to the approach used.
-		// NOTE: all blocks of associated code have been marked with a comment:
-		//***EXACT MATCH CHECK***
-		////////////////////////////////////////////////////////////////////////////
-
-		//in this case, seq_flag is used to note sequences that have an exact match - allows setting of best_score=0 for every run
-		//cuda_find_exact_matches<<<dimGrid,dimBlock>>>(global_bwt, no_to_process, global_init_device, global_seq_flag_device);
-		//cudaDeviceSynchronize();
-		//cuda_err = cudaGetLastError();
-		//if(int(cuda_err))
-		//{
-//			fprintf(stderr, "\n[aln_core] CUDA ERROR(s) reported during exact match pre-check! Last CUDA error message: %s\n[aln_core] Abort!\n", cudaGetErrorString(cuda_err));
-//			return;
-//		}
-
 		fprintf(stderr, "'");
 		cudaMemcpy(global_init_device, global_init_host, no_to_process*sizeof(init_info_t), cudaMemcpyHostToDevice);
 		report_cuda_error_GPU("[aln_core] Error copying \"global_init_host\" to GPU.");
 		//cuda_find_exact_matches writes straight to global_init_device so we can launch the first kernel and then deal with global_seq_flag_device
 		cuda_inexact_match_caller<<<dimGrid,dimBlock>>>(global_bwt, no_to_process, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, SUFFIX_CLUMP_WIDTH>0);
+		//fprintf(stderr,"1 cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(global_bwt, %d, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, SUFFIX_CLUMP_WIDTH=%d)\n",
+		//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_to_process, SUFFIX_CLUMP_WIDTH);
 		fprintf(stderr, "'");
 
 		//***EXACT MATCH CHECK***
 		//store knowledge of an exact match to be copied into init struct during partial hit queueing
 		//cudaMemcpy(global_seq_flag_host, global_seq_flag_device, no_of_sequences*sizeof(char), cudaMemcpyDeviceToHost);
+		//report_cuda_error_GPU("[aln_core] Error reading \"global_seq_flag_host\" from GPU.");
 		//for(int i=0; i<no_of_sequences; i++){
 //				if(global_seq_flag_host[i]){
 //					global_alignment_meta_host_final[i].has_exact = 1;
@@ -2869,6 +2924,8 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 				int gridsize = GRID_UNIT * (1 + int (((no_to_process/blocksize) + ((no_to_process%blocksize)!=0))/GRID_UNIT));
 				dim3 dimGrid(gridsize);
 				cuda_inexact_match_caller<<<dimGrid,dimBlock>>>(global_bwt, no_to_process, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, 0);
+				//fprintf(stderr,"2 cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(global_bwt, %d, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, 0)\n",
+				//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_to_process);
 				cudaDeviceSynchronize(); //wait until kernel has had a chance to report error
 				cuda_err = cudaGetLastError();
 				if(int(cuda_err))
@@ -3000,8 +3057,13 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 		if (split_kernel) {
 			cuda_split_inexact_match_caller<<<dimGrid,dimBlock>>>(no_of_sequences, max_sequence_length, global_alignment_meta_device, 0);
+			fprintf(stderr,"cuda_split_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(%d, %d, global_alignment_meta_device, 0)\n",
+				dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_of_sequences,max_sequence_length);
 		} else {
+		  //WBL 21 Nov 2014 looks odd cuda_inexact_match_caller arguments do not match
 			cuda_inexact_match_caller<<<dimGrid,dimBlock>>>(global_bwt, no_of_sequences, max_sequence_length, global_alignment_meta_device, 0);
+			fprintf(stderr,"3 cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(global_bwt, %d, %d, global_alignment_meta_device, 0)\n",
+				dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_of_sequences,max_sequence_length);
 		}
 		fprintf(stderr,"[aln_debug] kernels return \n", time_used);
 
@@ -3192,6 +3254,8 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 				//run kernel again
 				cuda_split_inexact_match_caller<<<dimGrid,dimBlock>>>(no_of_sequences, max_sequence_length, global_alignment_meta_device, 0);
+				//fprintf(stderr,"cuda_split_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(%d, %d, global_alignment_meta_device, 0)\n",
+				//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_of_sequences, max_sequence_length);
 
 				// Did we get an error running the code? Abort if yes.
 				cudaDeviceSynchronize(); //wait until kernel has had a chance to report error
@@ -3337,7 +3401,9 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 
 
 	fprintf(stderr,"[aln_core] Running %s CUDA mode.\n",PACKAGE_VERSION);
-
+#if STDOUT_STRING_RESULT == 1
+	fprintf(stdout,"[aln_core] Running %s CUDA mode.\n",PACKAGE_VERSION);
+#endif
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//CUDA options
 	if (opt->max_entries < 0 )
