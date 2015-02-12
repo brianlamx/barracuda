@@ -6,7 +6,7 @@
 #include <time.h>
 
 #ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "0.7.0 beta"
+#define PACKAGE_VERSION "0.7.0"
 #endif
 //TODO: done merging for main.c
 
