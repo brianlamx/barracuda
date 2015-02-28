@@ -1,3 +1,13 @@
+/*
+  (0.7.0) beta: $Revision: 1.4 $ 
+  WBL 11 Feb 2015 Still not in SVN, try to compile..
+restore STDOUT_STRING_RESULT add same_length
+  WBL 16 Dec 2014 Add max_length argument to barracuda_read_seqs()
+  WBL 4 Dec 2014 surpress gcc warnings
+  WBL 5 Nov 2014 disable STDOUT_STRING_RESULT
+  Brian Lam email Wed, Nov 5, 2014 at 12:06 PM
+*/
+
 #ifndef BWTALN_H
 #define BWTALN_H
 
@@ -148,14 +158,14 @@ typedef struct {
 extern "C" {
 #endif
 
-	gap_opt_t *gap_init_opt();
+	gap_opt_t *gap_init_opt(void);
 	void bwa_aln_core(const char *prefix, const char *fn_fa, gap_opt_t *opt);
 
 	bwa_seqio_t *bwa_seq_open(const char *fn);
 	bwa_seqio_t *bwa_bam_open(const char *fn, int which);
 	void bwa_seq_close(bwa_seqio_t *bs);
 	void seq_reverse(int len, ubyte_t *seq, int is_comp);
-	barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *seq, unsigned int buffer, int *n, int mode, int trim_qual, unsigned int *acc_length);
+  barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *seq, unsigned int buffer, int *n, int mode, int trim_qual, unsigned int *acc_length, unsigned short *max_length, int *same_length);
 	bwa_seq_t *bwa_read_seq(bwa_seqio_t *seq, int n_needed, int *n, int mode, int trim_qual);
 	void bwa_free_read_seq(int n_seqs, bwa_seq_t *seqs);
 
