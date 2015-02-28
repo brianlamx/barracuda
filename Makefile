@@ -2,6 +2,8 @@
 # Configuration for BarraCUDA project
 #######################################################
 
+#WBL 28 Feb 2015 compile for Tesla K20 etc (sm_35)
+
 # cu source files
 CUFILES	= $(wildcard *.cu)
 # c++ source files
@@ -63,7 +65,7 @@ endif
 ifeq ($(Arch),sm_20)
 SM_VERSIONS := sm_20 # Compile sm_20 optimized code for fermi or above
 else
-SM_VERSIONS := sm_20 # Only device with 1.3 or above is supported.
+SM_VERSIONS := sm_35 # Only Tesla K20 and about supports __ldg
 endif
 
 CUDA_INSTALL_PATH ?= /usr/local/cuda

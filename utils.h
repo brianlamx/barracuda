@@ -24,6 +24,7 @@
 */
 
 /* Contact: Heng Li <lh3@sanger.ac.uk> */
+/* $Revision: 1.2 $ WBL 4 Dec 2014 surpress gcc warnings */
 
 #ifndef LH3_UTILS_H
 #define LH3_UTILS_H
@@ -63,8 +64,8 @@ extern "C" {
 	int err_fflush(FILE *stream);
 	int err_fclose(FILE *stream);
 
-	double cputime();
-	double realtime();
+	double cputime(void); //surpress warning: function declaration isn't a prototype
+	double realtime(void);
 
 #ifdef __cplusplus
 }

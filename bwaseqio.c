@@ -1,5 +1,12 @@
+/* $Revision: 1.10 $ 
+WBL 16 Dec 2014 use next_packed and pack_length
+WBL  4 Dec 2014 add some checks that calloc was ok
+ */
+
 #include <zlib.h>
 #include <ctype.h>
+#include <assert.h>
+#include <limits.h>
 #include "bwtaln.h"
 #include "utils.h"
 #include "bamlite.h"
@@ -72,6 +79,7 @@ void seq_reverse(int len, ubyte_t *seq, int is_comp)
 	}
 }
 
+int barracuda_trim_read(int trim_qual, barracuda_query_array_t *p, ubyte_t *qual);//surpress gcc warning
 int barracuda_trim_read(int trim_qual, barracuda_query_array_t *p, ubyte_t *qual)
 {
 	int s = 0, l, max = 0, max_l = p->len;
@@ -254,8 +262,8 @@ int bwa_read_seq_one_half_byte (bwa_seqio_t *bs, unsigned char * half_byte_array
 	return len;
 }
 
-
-barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *bs,  unsigned int buffer,  int *n, int mode, int trim_qual, unsigned int *acc_length)
+static int variable_length_reported=0;
+barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *bs,  unsigned int buffer,  int *n, int mode, int trim_qual, unsigned int *acc_length, unsigned short *max_length, int *same_length)
 {
 	barracuda_query_array_t *seqs, *p;
 	kseq_t *seq = bs->ks;
@@ -264,9 +272,12 @@ barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *bs,  unsigned int buff
 						is_64 = mode&BWA_MODE_IL13,
 						l_bc = mode>>24;
 
+	*max_length  = 0;
+	*same_length = 1;
+	int first_length;
 	int query_length = 0;
-	bwtint_t		n_trimmed = 0,
-					n_tot = 0;
+	bwtint_t		n_trimmed = 0;
+	unsigned int n_tot = 0;
 	size_t memory_allocation = 0x160000;
 
 	if (l_bc > BWA_MAX_BCLEN) {
@@ -277,8 +288,13 @@ barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *bs,  unsigned int buff
 	if (bs->is_bam) return barracuda_read_bam(bs, buffer, n, trim_qual, acc_length); // l_bc has no effect for BAM input
 
 	seqs = (barracuda_query_array_t*)calloc(memory_allocation, sizeof(bwa_seq_t));
+	assert(seqs); //better than segfault
 
-	while ((n_tot + 250) < (1ul<<(buffer+1))){
+	
+      //while space in buffers for next group of queries
+      //In case same_length becomes false use constant rather than first_length
+      //pre Dec 2014 assumed sequences up to 250
+	while (next_packed(n_tot,n_seqs,first_length) < (1ul<<(buffer+1))){
 
 		ubyte_t *seq_qual;
 		query_length = kseq_read(seq);
@@ -318,10 +334,23 @@ barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *bs,  unsigned int buff
 			seq_qual = (ubyte_t*)strdup((char*)seq->qual.s);
 			n_trimmed += barracuda_trim_read(trim_qual, p, seq_qual);
 		}
+		if(n_seqs==1) first_length =  query_length;
+		else       if(first_length != query_length) {
+		  if(!variable_length_reported) {
+		    fprintf(stderr, "[barracuda_read_seq] Better if sequences of the same length. %d\n",n_seqs);
+		    variable_length_reported=1;
+		  }
+		  *same_length = 0;
+		}
+		if(query_length > *max_length) {
+		  assert(query_length<=USHRT_MAX);
+		  *max_length = query_length;
+		}
 
 		p->len = query_length;
-		n_tot += p->len;
+		n_tot += pack_length(p->len);
 		p->seq = (char*)calloc(p->len, 1);
+		assert(p->seq); //better than segfault
 		for (i = 0; i != p->len; ++i)
 			p->seq[i] = nst_nt4_table[(int)seq->seq.s[i]];
 		//sequence now reversed later in barracuda_write_to_half_byte_array

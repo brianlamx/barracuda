@@ -1,9 +1,14 @@
 
 /*
- * barracuda.h
+ * barracuda.h $Revision: 1.9 $ 
  *
  *  Created on: 8 Jun 2012
  *      Author: yhbl2
+ *
+ * WBL 28 Feb 2015 Remove deadcode for alternative sequences_array layout
+ * WBL 11 Feb 2015 For SVN, retain bwtkl_t
+ * WBL 16 Dec 2014 Add pack_length next_packed
+ * WBL  4 Dec 2014 surpress gcc warnings
  */
 
 
@@ -34,6 +39,17 @@
 #define MAX_NO_REGULAR_PARTIALS 10
 
 
+
+//for barracuda_read_seqs. In both cases the return is in nominal bases. barracuda_read_seqs() assumes 2 bases per byte
+static //removes warning: no previous prototype for and linker error multiple definition of `pack_length'
+inline unsigned int pack_length(const int number_of_bases) { 
+  return number_of_bases; //gave up on new layout for texture sequences_array
+}
+
+static 
+inline unsigned int next_packed(const int n_tot, const int n_seqs, const int first_length) {
+  return n_tot + 250; //gave up on new layout for texture sequences_array
+}
 
 #ifdef __cplusplus
 extern "C" {
@@ -144,6 +160,11 @@ extern "C" {
 
 	typedef struct init_list_t init_list;
 
+typedef struct {
+  bwtint_t k;
+  bwtint_t l;
+} bwtkl_t;
+
 	////////////////////////////////////
 	// End BarraCUDA specific structs
 	////////////////////////////////////
@@ -152,9 +173,9 @@ extern "C" {
 	// Start BarraCUDA specific functions
 	////////////////////////////////////
 
-	int detect_cuda_device();
+	int detect_cuda_device(void);
 
-	int bwa_deviceQuery();
+	int bwa_deviceQuery(void);
 
 	void aln_quicksort2(bwt_aln1_t *aln, int m, int n);
 
@@ -230,7 +251,7 @@ extern "C" {
 	    bwtint_t *rbwt_sa_de,
 	    int *g_log_n_de);
 
-	void free_bwa_cal_pac_pos_cuda2();
+	void free_bwa_cal_pac_pos_cuda2(void);
 
 	///////////////////////////////////////////////////////////////
 	// End CUDA SAMSE
