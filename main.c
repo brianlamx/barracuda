@@ -1,3 +1,8 @@
+/* (0.7.0) beta: 
+  19 Jan 2015 WBL change PACKAGE_VERSION
+   2 Jan 2015 WBL bugfix if bwa_aln() reports error (eg bad command line) return error status
+*/
+
 #include <stdio.h>
 #include <string.h>
 #include "main.h"
@@ -6,9 +11,8 @@
 #include <time.h>
 
 #ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "0.7.0"
+#define PACKAGE_VERSION "0.7.0 GP r1.4"
 #endif
-//TODO: done merging for main.c
 
 static int usage()
 {
@@ -79,5 +83,5 @@ int main(int argc, char *argv[])
 			fprintf(stderr, " %s", argv[i]);
 		fprintf(stderr, "\n[%s] Real time: %.3f sec; CPU: %.3f sec\n", __func__, realtime() - t_real, cputime());
 	}
-	return 0;
+	return ret;
 }
