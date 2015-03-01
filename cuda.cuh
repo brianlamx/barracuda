@@ -26,7 +26,7 @@
 
 */
 
-/* (0.7.0) beta: $Revision: 1.104 $
+/* (0.7.0) beta: $Revision: 1.105 $
   27 Feb 2015 WBL scache_global_bwt failed to speed cuda2.cuh, instead
 let cuda_inexact_match_caller use old code without mycache 
   26 Feb 2015 WBL cuda_inexact_match_caller uses up to 15(rather than 7) closelyplaced words so should work fine with mycache but doesnt
@@ -69,6 +69,7 @@ remove option USE_SIMON_OCC4
 //#define mycache2 1
 #define cache_global_bwt 1
 #define scache_global_bwt
+//moved decision to set or not direct_global_bwt into barracuda.cu
 
 __device__ unsigned char read_char(unsigned int pos, unsigned int * lastpos, unsigned int * data )
 // read character back from sequence arrays

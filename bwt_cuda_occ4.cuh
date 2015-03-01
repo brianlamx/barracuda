@@ -26,7 +26,8 @@
 
 */
 
-/* (0.7.0) beta: $Revision: 1.2 $
+/* (0.7.0) beta: $Revision: 1.3 $
+   1 Mar 2015 WBL bugfix direct_global_bwt reading global_bwt
   27 Feb 2015 WBL mycache4 but not direct_global_bwt __ldg to access global_bwt
   12 Feb 2015 WBL taken from cuda.cuh r1.1 for cuda2.cuh
    4 Dec 2014 WBL Extract aln device code to new separate file cuda.cuh
@@ -94,8 +95,8 @@ __device__ ulong4 bwt_cuda_occ4(uint32_t *global_bwt, bwtint_t k)
 //effectively assumes mycache4, ie ldg_t is uint4
 	//assert(sizeof(ulong4)==2*sizeof(uint4));
 #ifdef direct_global_bwt
-	((uint4*)(&n))[0] = ((uint4*)&p[0])[0];   //n.x,n.y
-	((uint4*)(&n))[1] = ((uint4*)&p[2])[4];   //n.z,n.w
+	((uint4*)(&n))[0] =     *((uint4*)p);     //n.x,n.y
+	((uint4*)(&n))[1] =     *((uint4*)&p[4]); //n.z,n.w
 #else
 	((uint4*)(&n))[0] = __ldg((uint4*)p);     //n.x,n.y
 	((uint4*)(&n))[1] = __ldg((uint4*)&p[4]); //n.z,n.w
