@@ -27,6 +27,7 @@
 */
 
 /* (0.7.0) beta: 
+   1 Mar 2015 WBL disable __ldg unless Tesla K20 or later
   27 Feb 2015 WBL remove bulk loopcount==0 debug
   26 Feb 2015 WBL swap back from bwt_cuda_occ4.cuh to stub bwt_cuda_occ4()
   25 Feb 2015 WBL skip r1.32, r1.33(sequence_shift81 perhaps do later?),
@@ -60,7 +61,7 @@ improve "[aln_debug] bwt loaded %lu bytes, <assert.h> include cuda.cuh
   Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
 */
 
-#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.101 $"
+#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.102 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -451,6 +452,11 @@ error need to set same_length...
 
 //CUDA DEVICE CODE STARTING FROM THIS LINE
 /////////////////////////////////////////////////////////////////////////////
+
+#define scache_global_bwt
+#if __CUDA_ARCH__ < 350
+#define direct_global_bwt 1
+#endif //__ldg only supported in compute level 3.5 (ie Tesla K20) and after
 
 /*WBL 12 Feb 2015 performance much worse for barracuda r1.85
  * for timebeing try using full old version of bwt_cuda_occ4*/
