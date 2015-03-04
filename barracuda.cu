@@ -27,6 +27,7 @@
 */
 
 /* (0.7.0) beta: 
+   4 Mar 2015 WBL print name of active GPU
    1 Mar 2015 WBL disable __ldg unless Tesla K20 or later
   27 Feb 2015 WBL remove bulk loopcount==0 debug
   26 Feb 2015 WBL swap back from bwt_cuda_occ4.cuh to stub bwt_cuda_occ4()
@@ -61,7 +62,7 @@ improve "[aln_debug] bwt loaded %lu bytes, <assert.h> include cuda.cuh
   Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
 */
 
-#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.102 $"
+#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.103 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -1764,7 +1765,7 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 		 cudaMemGetInfo(&mem_available, &total_mem);
 		 report_cuda_error_GPU("[core] Error on cudaMemGetInfo");
 
-		 fprintf(stderr, "[aln_core] Using specified CUDA device %d, memory available %d MB.\n", sel_device, int(mem_available>>20));
+		 fprintf(stderr, "[aln_core] Using specified CUDA device %d %s, memory available %d MB.\n", sel_device, properties.name, int(mem_available>>20));
 
 	}
 
@@ -1916,9 +1917,11 @@ int detect_cuda_device()
  		 }
 		 if (max_mem_available>>20 >= MIN_MEM_REQUIREMENT)
 		 {
-			 sel_device = max_device;
-			 fprintf(stderr, "[detect_cuda_device] Using CUDA device %d, global memory size %d MB.\n", max_device, int(max_mem_available>>20));
-			 }
+			sel_device = max_device;
+			cudaGetDeviceProperties(&properties, max_device);
+			report_cuda_error_GPU("[detect_cuda_device] Error_5 on cudaGetDeviceCount");
+			fprintf(stderr, "[detect_cuda_device] Using CUDA device %d %s, global memory size %d MB.\n", max_device, properties.name, int(max_mem_available>>20));
+			}
 		 else
 		 {
 			 fprintf(stderr,"[detect_cuda_device] Cannot find a suitable CUDA device with > %d MB of memory available! aborting!\n", MIN_MEM_REQUIREMENT);
