@@ -27,7 +27,7 @@
 */
 
 /* (0.7.0) beta: 
-   4 Mar 2015 WBL print name of active GPU
+   4 Mar 2015 WBL print name of active GPU, remove individual cuda_inexact_match_caller times
    1 Mar 2015 WBL disable __ldg unless Tesla K20 or later
   27 Feb 2015 WBL remove bulk loopcount==0 debug
   26 Feb 2015 WBL swap back from bwt_cuda_occ4.cuh to stub bwt_cuda_occ4()
@@ -62,7 +62,7 @@ improve "[aln_debug] bwt loaded %lu bytes, <assert.h> include cuda.cuh
   Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
 */
 
-#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.103 $"
+#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.105 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -796,7 +796,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 			fprintf(stderr,"[aln_core] Processing %d sequence reads at a time.\n[aln_core] ", (gridsize*blocksize)) ;
 		}
 		//fprintf(stderr, "%d sequences max_sequence_length=%d same_length=%d\n", no_of_sequences, max_sequence_length, same_length);
-		fprintf(stderr, "l%d", loopcount);
+		//fprintf(stderr, "l%d", loopcount);
 #if STDOUT_STRING_RESULT == 1
 		fprintf(stdout, "loopcount %d\n", loopcount);
 #endif
@@ -864,8 +864,8 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 		if(same_length) { /*new cuda_find_exact_matches assumes all sequences are same length*/
 		//WBL re-enabled cuda_find_exact_matches with new KL output
-		fprintf(stderr, "cuda_find_exact_matches<<<(%d,%d,%d)(%d,%d,%d)>>>(global_bwt, %d, %d, kl_device)\n",
-			dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_of_sequences,max_sequence_length);
+		//fprintf(stderr, "cuda_find_exact_matches<<<(%d,%d,%d)(%d,%d,%d)>>>(global_bwt, %d, %d, kl_device)\n",
+		//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_of_sequences,max_sequence_length);
 		struct timeval start2;
 		gettimeofday (&start2, NULL);
 		cuda_find_exact_matches<<<dimGrid,dimBlock>>>(global_bwt, no_of_sequences, max_sequence_length, kl_device);
@@ -878,7 +878,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		}
 		gettimeofday (&end, NULL);
 		const double time_used = diff_in_seconds(&end,&start2);
-		fprintf(stderr, "[aln_core] find_exact_matches Kernel speed: %g sequences/sec or %g bp/sec %g\n", no_of_sequences/time_used, read_size/time_used, time_used);
+		fprintf(stderr, "\n[aln_core] find_exact_matches Kernel speed: %g sequences/sec or %g bp/sec %g", no_of_sequences/time_used, read_size/time_used, time_used);
 		}
 		cudaMemcpy(kl_host, kl_device, no_of_sequences*sizeof(bwtkl_t), cudaMemcpyDeviceToHost);
 		report_cuda_error_GPU("[aln_core] Error reading \"kl_host\" from GPU.");
@@ -988,12 +988,12 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		report_cuda_error_GPU("[aln_core] Error copying \"global_init_host\" to GPU.");
 		//cuda_find_exact_matches writes straight to global_init_device so we can launch the first kernel and then deal with global_seq_flag_device
 
-		{struct timeval start2;
-		gettimeofday (&start2, NULL);
+		{//struct timeval start2;
+		//gettimeofday (&start2, NULL);
 
 		cuda_inexact_match_caller<<<dimGrid,dimBlock>>>(global_bwt, no_to_process, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, SUFFIX_CLUMP_WIDTH>0);
-		fprintf(stderr,"1 cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(,%d,,,,,,,%d)\n",
-			dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_to_process, SUFFIX_CLUMP_WIDTH);
+		//fprintf(stderr,"1 cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(,%d,,,,,,,%d)\n",
+		//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_to_process, SUFFIX_CLUMP_WIDTH);
 		fprintf(stderr, "'");
 
 		//***EXACT MATCH CHECK***
@@ -1024,10 +1024,11 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 #endif
 
 		//Check time
-		gettimeofday (&end, NULL);
-		const double time_used = diff_in_seconds(&end,&start2);
-		fprintf(stderr, "[aln_core] 1 inexact Kernel speed: %u %g sequences/sec %g\n", no_to_process, no_to_process/time_used, time_used);
+		//gettimeofday (&end, NULL);
+		//const double time_used = diff_in_seconds(&end,&start2);
+		//fprintf(stderr, "[aln_core] 1 inexact Kernel speed: %u %g sequences/sec %g\n", no_to_process, no_to_process/time_used, time_used);
 		}
+		gettimeofday (&end, NULL);
 		time_used = diff_in_seconds(&end,&start);
 		total_calculation_time_used += time_used;
 		total_time_used += time_used;
@@ -1221,11 +1222,11 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 				int gridsize = GRID_UNIT * (1 + int (((no_to_process/blocksize) + ((no_to_process%blocksize)!=0))/GRID_UNIT));
 				dim3 dimGrid(gridsize);
-				struct timeval start2;
-				gettimeofday (&start2, NULL);
+				//struct timeval start2;
+				//gettimeofday (&start2, NULL);
 				cuda_inexact_match_caller<<<dimGrid,dimBlock>>>(global_bwt, no_to_process, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, 0);
-				fprintf(stderr,"2 cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(,%d,,,,,,,0)\n",
-					dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_to_process);
+				//fprintf(stderr,"2 cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(,%d,,,,,,,0)\n",
+				//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_to_process);
 				cudaDeviceSynchronize(); //wait until kernel has had a chance to report error
 				cuda_err = cudaGetLastError();
 				if(int(cuda_err))
@@ -1234,9 +1235,9 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 					return;
 				}
 				//if(loopcount==0) print_global_alns(no_to_process,(!split_loop_count ? MAX_NO_SEEDING_PARTIALS : MAX_NO_REGULAR_PARTIALS),global_alns_device);
-				gettimeofday (&end, NULL);
-				const double time_used = diff_in_seconds(&end,&start2);
-				fprintf(stderr, "[aln_core] 2 inexact Kernel speed: %u %g sequences/sec %g\n", no_to_process, no_to_process/time_used, time_used);
+				//gettimeofday (&end, NULL);
+				//const double time_used = diff_in_seconds(&end,&start2);
+				//fprintf(stderr, "[aln_core] 2 inexact Kernel speed: %u %g sequences/sec %g\n", no_to_process, no_to_process/time_used, time_used);
 			}
 			split_loop_count++;
 		}
