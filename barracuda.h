@@ -133,16 +133,6 @@ extern "C" {
 
 	typedef struct suffix_seq_list_t suffix_seq_list;
 
-#if USE_PETR_SPLIT_KERNEL > 0
-#define MAX_SCORE 32 //How many different scores to store
-	//Temporary host structure to hold alignments
-	typedef struct
-	{
-		align_store_lst * score_align[MAX_SCORE]; // holds a pointer for each of the scores
-		int start_pos; // shared for all sequences - we do sequential runs
-		// also store current state of alignment
-	}main_alignment_store_host_t;
-#endif
 
 	struct init_bin_list_t {
 		struct init_list_t * aln_list;
@@ -215,46 +205,6 @@ typedef struct {
 
 	///////////////////////////////////////////////////////////////
 	// End CUDA ALN
-	///////////////////////////////////////////////////////////////
-
-	///////////////////////////////////////////////////////////////
-	// Begin CUDA SAMSE
-	///////////////////////////////////////////////////////////////
-
-	void launch_bwa_cal_pac_pos_cuda(
-		const char *prefix,
-		int n_seqs,
-		bwa_seq_t *seqs,
-		int max_mm,
-		float fnr,
-		int device);
-
-	int prepare_bwa_cal_pac_pos_cuda1(
-	    unsigned int **global_bwt,
-	    unsigned int **global_rbwt,
-	    const char *prefix,
-	    bwtint_t **bwt_sa_de,
-	    bwtint_t **rbwt_sa_de,
-	    const bwt_t *bwt,
-	    const bwt_t *rbwt,
-	    const int *g_log_n_ho,
-	    int **g_log_n_de,
-	    const int g_log_n_len,
-	    int device);
-
-	void prepare_bwa_cal_pac_pos_cuda2(int n_seqs_max);
-
-	void free_bwa_cal_pac_pos_cuda1(
-	    unsigned int *global_bwt,
-	    unsigned int *global_rbwt,
-	    bwtint_t *bwt_sa_de,
-	    bwtint_t *rbwt_sa_de,
-	    int *g_log_n_de);
-
-	void free_bwa_cal_pac_pos_cuda2(void);
-
-	///////////////////////////////////////////////////////////////
-	// End CUDA SAMSE
 	///////////////////////////////////////////////////////////////
 
 #ifdef __cplusplus

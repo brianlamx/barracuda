@@ -14,7 +14,7 @@ restore STDOUT_STRING_RESULT add same_length
 #include <stdint.h>
 #include "bwt.h"
 
-#define STDOUT_STRING_RESULT 1 // output alignment in text format (in SA coordinates, not compatible with SAM output modules(samse/pe)
+#define STDOUT_STRING_RESULT 0 // output alignment in text format (in SA coordinates, not compatible with SAM output modules(samse/pe)
 #define STDOUT_BINARY_RESULT (1-STDOUT_STRING_RESULT) //output alignment for samse/sampe (leave ON)
 #define ARRAN_DEBUG_LEVEL 0
 #define ARRAN_PRINT_DFS 1 // requires ARRAN_DEBUG_LEVEL > 0
