@@ -1335,7 +1335,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		//fprintf (stderr, ".");
 		total_no_of_base_pair+=read_size;
 		total_no_of_sequences+=run_no_sequences;
-		fprintf(stderr, "\n[aln_core] %d reads processed.",total_no_of_sequences);
+		fprintf(stderr, "\n[aln_core] %d reads processed.",(int)(total_no_of_sequences));
 
 		gettimeofday (&start, NULL);
 		loopcount ++;
@@ -1495,7 +1495,7 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 	//stop if there isn't enough memory available
 
 	int buffer = SEQUENCE_TABLE_SIZE_EXPONENTIAL;
-	fprintf(stderr,"[aln_core] Memory available for performing alignment: %d MB.\n", mem_available>>20);
+	fprintf(stderr,"[aln_core] Memory available for performing alignment: %d MB.\n", (int)(mem_available>>20));
 
 	if ((mem_available>>20) < CUDA_TESLA)
 	{
