@@ -54,7 +54,7 @@ gap_opt_t *gap_init_opt()
 	o->max_top2 = 5; // change from 20 in bwa;
 	o->cuda_device = -1;
 	o->bwa_output = 1; //TODO: Switch to always on
-	o->fast = 1; //TODO: NOT IMPLEMENTED YET
+	o->fast = 1;
 	o->no_header = 0; //NOT IMPLEMENTED YET
 	o->trim_qual = 0;
 #endif
@@ -338,7 +338,7 @@ int bwa_aln(int argc, char *argv[])
 	gap_opt_t *opt;
 
 	opt = gap_init_opt();
-	while ((c = getopt(argc, argv, "n:o:e:C:i:d:l:k:cLR:m:t:NM:O:E:q:f:b012IYB:")) >= 0) {
+	while ((c = getopt(argc, argv, "n:o:e:C:i:d:l:k:cgLR:m:t:NM:O:E:q:f:b012IYB:")) >= 0) {
 		switch (c) {
 		case 'n':
 			if (strstr(optarg, ".")) opt->fnr = atof(optarg), opt->max_diff = -1;
@@ -356,6 +356,7 @@ int bwa_aln(int argc, char *argv[])
 		case 'k': opt->max_seed_diff = atoi(optarg); break;
 		case 'm': opt->max_entries = atoi(optarg); break;
 		case 't': opt->n_threads = atoi(optarg); break;
+		case 'g': opt->fast = 0; break;
 		case 'L': opt->mode |= BWA_MODE_LOGGAP; break;
 		case 'R': opt->max_top2 = atoi(optarg); break;
 		case 'q': opt->trim_qual = atoi(optarg); break;
@@ -408,6 +409,7 @@ int bwa_aln(int argc, char *argv[])
 		fprintf(stderr, "         -Y        filter Casava-filtered sequences\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "         -C        Specify CUDA compute device. Default [auto-detect]\n");
+		fprintf(stderr, "         -g        Allow gap opening in seed. Default [Don't allow any gap openings]\n");
 		fprintf(stderr, "\n");
 		return 1;
 	}

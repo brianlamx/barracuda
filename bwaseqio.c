@@ -329,7 +329,6 @@ barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *bs,  unsigned int buff
 					seq->qual.l -= l_bc; seq->qual.s[seq->qual.l] = 0;
 				}
 		}
-		//TODO: TRIMMING!!!!
 		if (trim_qual >= 1 && seq->qual.l) { // copy quality
 			seq_qual = (ubyte_t*)strdup((char*)seq->qual.s);
 			n_trimmed += barracuda_trim_read(trim_qual, p, seq_qual);
@@ -356,6 +355,10 @@ barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *bs,  unsigned int buff
 		//sequence now reversed later in barracuda_write_to_half_byte_array
 
 		if (n_seqs == memory_allocation) {
+			break;
+		}
+		if (n_seqs == 1000000) //added to prevent processing more than 1mln at a time
+		{
 			break;
 		}
 	}

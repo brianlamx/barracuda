@@ -1098,7 +1098,7 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 			n_threads = (popt->thread > max_threads)? max_threads : popt->thread ;
 		}else if (max_threads >= 2)
 		{
-			n_threads = (max_threads <= 6)? max_threads : 6 ;
+			n_threads = (max_threads <= 4)? max_threads : 4 ;
 		}else
 		{
 			n_threads = 1;

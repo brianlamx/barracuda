@@ -27,6 +27,8 @@
 */
 
 /* (0.7.0) beta: 
+  13 Mar 2015 YHBL Added K40 large buffer support (about 9 GB total usage).
+  13 Mar 2015 YHBL Clean up obsolete codes
    4 Mar 2015 WBL print name of active GPU, remove individual cuda_inexact_match_caller times
    1 Mar 2015 WBL disable __ldg unless Tesla K20 or later
   27 Feb 2015 WBL remove bulk loopcount==0 debug
@@ -157,8 +159,6 @@ improve "[aln_debug] bwt loaded %lu bytes, <assert.h> include cuda.cuh
 
 // how much debugging information shall the kernel output? kernel output only works for fermi and above
 #define DEBUG_LEVEL 0
-//#define USE_PETR_SPLIT_KERNEL 0
-// how long should a subsequence be for one kernel launch
 
 
 //Global variables for inexact match <<do not change>>
@@ -772,7 +772,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 			opt->seed_len = read_size/no_of_sequences >> 1; //if specify seed length not valid, set to half the sequence length
 		}
 
-		if (!loopcount) fprintf(stderr, "[aln_core] Now aligning sequence reads to reference assembly, please wait..\n");
+		if (!loopcount) fprintf(stderr, "[aln_core] Now aligning sequence reads to reference assembly, please wait..");
 
 		if (!loopcount)	{
 #if DEBUG_LEVEL > 0
@@ -781,7 +781,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 			fprintf(stderr, "[aln_debug] Using SIMT with grid size: %u, block size: %d. ", gridsize,blocksize) ;
 			fprintf(stderr,"\n[aln_debug] Loop count: %i\n", loopcount + 1);
 #endif
-			fprintf(stderr,"[aln_core] Processing %d sequence reads at a time.\n[aln_core] ", (gridsize*blocksize)) ;
+		//	fprintf(stderr,"[aln_core] Processing %d sequence reads at a time.", (gridsize*blocksize)) ;
 		}
 		//fprintf(stderr, "%d sequences max_sequence_length=%d same_length=%d\n", no_of_sequences, max_sequence_length, same_length);
 		//fprintf(stderr, "l%d", loopcount);
@@ -866,7 +866,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		}
 		gettimeofday (&end, NULL);
 		const double time_used = diff_in_seconds(&end,&start2);
-		fprintf(stderr, "\n[aln_core] find_exact_matches Kernel speed: %g sequences/sec or %g bp/sec %g", no_of_sequences/time_used, read_size/time_used, time_used);
+		//fprintf(stderr, "\n[aln_core] find_exact_matches Kernel speed: %g sequences/sec or %g bp/sec %g", no_of_sequences/time_used, read_size/time_used, time_used);
 		}
 		cudaMemcpy(kl_host, kl_device, no_of_sequences*sizeof(bwtkl_t), cudaMemcpyDeviceToHost);
 		report_cuda_error_GPU("[aln_core] Error reading \"kl_host\" from GPU.");
@@ -965,13 +965,13 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 			clumping = old_no_to_process!=no_to_process;
 
-#if ARRAN_DEBUG_LEVEL > -1
+#if ARRAN_DEBUG_LEVEL > 1
 	fprintf(stderr, "\n[aln_core][suffix_clump] Width: %i - Reduced to %i of %i (%0.2f%%)", SUFFIX_CLUMP_WIDTH, no_to_process, old_no_to_process, 100*(1-float(no_to_process)/float(no_of_sequences)));
 #endif
 
 		}
 
-		fprintf(stderr, "'");
+		//fprintf(stderr, "'");
 		cudaMemcpy(global_init_device, global_init_host, no_to_process*sizeof(init_info_t), cudaMemcpyHostToDevice);
 		report_cuda_error_GPU("[aln_core] Error copying \"global_init_host\" to GPU.");
 		//cuda_find_exact_matches writes straight to global_init_device so we can launch the first kernel and then deal with global_seq_flag_device
@@ -982,7 +982,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		cuda_inexact_match_caller<<<dimGrid,dimBlock>>>(global_bwt, no_to_process, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, SUFFIX_CLUMP_WIDTH>0);
 		//fprintf(stderr,"1 cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(,%d,,,,,,,%d)\n",
 		//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_to_process, SUFFIX_CLUMP_WIDTH);
-		fprintf(stderr, "'");
+		//fprintf(stderr, "'");
 
 		//***EXACT MATCH CHECK***
 		//store knowledge of an exact match to be copied into init struct during partial hit queueing
@@ -1020,7 +1020,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		time_used = diff_in_seconds(&end,&start);
 		total_calculation_time_used += time_used;
 		total_time_used += time_used;
-		fprintf(stderr, ".");
+		//fprintf(stderr, ".");
 		// query device for error
 
 		///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1047,7 +1047,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 			cudaDeviceSynchronize();
 			report_cuda_error_GPU("[aln_core] cuda error_2.");
 			if(!split_loop_count){
-				fprintf(stderr, "'");
+				//fprintf(stderr, "'");
 			}
 			cudaMemcpy(global_alignment_meta_host, global_alignment_meta_device, no_to_process*sizeof(alignment_meta_t), cudaMemcpyDeviceToHost);
 			report_cuda_error_GPU("[aln_core] Error reading \"global_alignment_meta_host\" from GPU.");
@@ -1063,7 +1063,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 	fprintf(stderr, "\n[aln_core][split_loop]");
 #endif
 
-			fprintf(stderr, ":");
+			//fprintf(stderr, ":");
 			for(int i=0; i<no_to_process; i++){
 				partial = global_alignment_meta_host + i;
 				final = global_alignment_meta_host_final + partial->sequence_id;
@@ -1146,7 +1146,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 
 			}
 
-			fprintf(stderr, ":");
+			//fprintf(stderr, ":");
 			init_bin_list * bin = bins[0];
 			bool more_bins = true;
 			int bins_processed=0, bins_to_process=split_loop_count<2 ? 1 : 2;
@@ -1201,7 +1201,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 			}
 
 			if(no_to_process>0){
-				fprintf(stderr, "|");
+	//			fprintf(stderr, "|");
 #if ARRAN_DEBUG_LEVEL > 0
 		fprintf(stderr, "\n[aln_core][split_process] no_to_process: %i", no_to_process);
 #endif
@@ -1263,7 +1263,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 #if DEBUG_LEVEL > 0
 		fprintf(stderr,"\n[aln_debug] Kernel finished, transfering data to host... \n", time_used);
 #else
-		fprintf(stderr,".");
+		//fprintf(stderr,".");
 #endif
 
 
@@ -1331,10 +1331,12 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 		gettimeofday (&end, NULL);
 		time_used = diff_in_seconds(&end,&start);
 		total_time_used += time_used;
-		//fprintf(stderr, "Finished outputting alignment information... %0.2fs.\n\n", time_used);
-		fprintf (stderr, ".");
+		//fprintf(stderr, "[aln_core] Finished outputting alignment information... %0.2fs.\n", time_used);
+		//fprintf (stderr, ".");
 		total_no_of_base_pair+=read_size;
 		total_no_of_sequences+=run_no_sequences;
+		fprintf(stderr, "\n[aln_core] %d reads processed.",total_no_of_sequences);
+
 		gettimeofday (&start, NULL);
 		loopcount ++;
 	}
@@ -1493,6 +1495,8 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 	//stop if there isn't enough memory available
 
 	int buffer = SEQUENCE_TABLE_SIZE_EXPONENTIAL;
+	fprintf(stderr,"[aln_core] Memory available for performing alignment: %d MB.\n", mem_available>>20);
+
 	if ((mem_available>>20) < CUDA_TESLA)
 	{
 		buffer = buffer - 1; //this will half the memory usage by half to 675MB
@@ -1504,7 +1508,16 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 	}
 	else
 	{
-		fprintf(stderr,"[aln_core] Sweet! Running with an enlarged buffer.\n");
+		if ((mem_available>>20) > 8192) //K40 has about 9GB left after loading human genome
+		{
+			buffer=25;
+			fprintf(stderr,"[aln_core] Sweet! Running with a super enlarged buffer.\n");
+		}
+		else
+		{
+			fprintf(stderr,"[aln_core] Sweet! Running with an enlarged buffer.\n");
+		}
+
 	}
 
 	//calls core_kernel_loop
@@ -1582,8 +1595,9 @@ int detect_cuda_device()
 				  {
 					  cuda_cores = properties.multiProcessorCount*192;
 				  }
+				  //cuda_cores no longer printed. BL
 
-			  fprintf(stderr,", CUDA cores %d, global memory size %d MB, compute capability %d.%d.\n", int(cuda_cores), int(mem_available>>20), int(properties.major),  int(properties.minor));
+			  fprintf(stderr,",global memory size %d MB, compute capability %d.%d.\n", int(mem_available>>20), int(properties.major),  int(properties.minor));
 			  if (max_cuda_cores <= cuda_cores) //choose the one with highest number of processors
 			  {
 					  max_cuda_cores = cuda_cores;

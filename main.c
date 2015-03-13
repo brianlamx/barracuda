@@ -11,7 +11,7 @@
 #include <time.h>
 
 #ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "0.7.0 GP r1.4"
+#define PACKAGE_VERSION "0.7.0 GP r1.5"
 #endif
 
 static int usage()
@@ -23,7 +23,6 @@ static int usage()
 	fprintf(stderr, "         aln           gapped/ungapped alignment\n");
 	fprintf(stderr, "         samse         generate alignment (single ended)\n");
 	fprintf(stderr, "         sampe         generate alignment (paired ended)\n");
-	//fprintf(stderr, "         bwasw         BWA-SW for long queries\n");
 	fprintf(stderr, "         fastmap       identify super-maximal exact matches\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "         fa2pac        convert FASTA to PAC format\n");
@@ -67,7 +66,6 @@ int main(int argc, char *argv[])
 	else if (strcmp(argv[1], "stdsw") == 0) ret = bwa_stdsw(argc-1, argv+1);
 	else if (strcmp(argv[1], "bwtsw2") == 0) ret = bwa_bwtsw2(argc-1, argv+1);
 	else if (strcmp(argv[1], "dbwtsw") == 0) ret = bwa_bwtsw2(argc-1, argv+1);
-	//else if (strcmp(argv[1], "bwasw") == 0) ret = bwa_bwtsw2(argc-1, argv+1);
 	else if (strcmp(argv[1], "fastmap") == 0) ret = main_fastmap(argc-1, argv+1);
 	else if (strcmp(argv[1], "deviceQuery") == 0) return bwa_deviceQuery();
 	else {
