@@ -141,9 +141,9 @@ else
 	COMMONFLAGS += 
 	BINSUBDIR   := release
 	LIBSUFFIX   :=
-	NVCCFLAGS   += --compiler-options -fno-strict-aliasing --compiler-options -fno-inline
-	CXXFLAGS    += -fno-strict-aliasing -O2
-	CFLAGS      += -fno-strict-aliasing -O2
+	NVCCFLAGS   += --compiler-options -fno-strict-aliasing --compiler-options -fno-inline -w
+	CXXFLAGS    += -fno-strict-aliasing -O2 -w
+	CFLAGS      += -fno-strict-aliasing -O2 -w
 endif
 
 # append optional arch/SM version flags (such as -arch sm_11)
@@ -296,14 +296,14 @@ $(OBJDIR)/%.cu_$(1).o : $(SRCDIR)%.cu $(CU_DEPS)
 endef
 
 # This line invokes the above template for each arch version stored in
-# SM_VERSIONS.  The call funtion invokes the template, and the eval
+# SM_VERSIONS.  The call function invokes the template, and the eval
 # function interprets it as make commands.
 $(foreach smver,$(SM_VERSIONS),$(eval $(call SMVERSION_template,$(smver))))
 
 all:$(TARGET)
-
-$(TARGET): makedirectories $(OBJS) $(CUBINS) $(PTXBINS) Makefile
+$(TARGET):makedirectories $(OBJS) $(CUBINS) $(PTXBINS) Makefile
 	$(VERBOSE)$(LINKLINE)
+	$(VERBOSE)echo "Done!"
 
 cubindirectory:
 	$(VERBOSE)mkdir -p $(CUBINDIR)
@@ -320,13 +320,14 @@ tidy :
 	$(VERBOSE)find . | egrep "\~" | xargs rm -f
 
 clean : tidy
+	$(VERBOSE)echo "Cleaning up ...."
 	$(VERBOSE)rm -f $(OBJS)
 	$(VERBOSE)rm -f $(DEPS)
 	$(VERBOSE)rm -f $(CUBINS)
 	$(VERBOSE)rm -f $(PTXBINS)
 	$(VERBOSE)rm -f $(TARGET)
 	$(VERBOSE)rm -f $(NVCC_KEEP_CLEAN)
-
+	$(VERBOSE)rm -rf $(OBJDIR)
 clobber : clean
 	$(VERBOSE)rm -rf $(ROOTOBJDIR)
 
