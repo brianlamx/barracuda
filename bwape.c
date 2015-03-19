@@ -1,4 +1,5 @@
 /*
+  2015-03-18 YHBL Fixed memory leak in pacseq calloc
   2014-11-28 (0.7.0) beta: WBL Add err_fread() and checking fn_sa have same numbers of query sequences
   2014-11-05 (0.7.0) beta: WBL Add .sai filenames to "Converting SA" diagnostic
   and check_n_aln() Cf. Brian Lam email Wed, Nov 5, 2014 at 12:06 PM
@@ -606,6 +607,7 @@ int bwa_cal_pac_pos_pe(const bntseq_t *bns, const char *prefix, bwt_t *const _bw
 	}
 #endif //HAVE_PTHREAD
 
+
 	// infer isize
 	infer_isize(n_seqs, seqs, ii, opt->ap_prior, bwt->seq_len/2, opt->verbose);
 	if (ii->avg < 0.0 && last_ii->avg > 0.0) *ii = *last_ii;
@@ -613,7 +615,6 @@ int bwa_cal_pac_pos_pe(const bntseq_t *bns, const char *prefix, bwt_t *const _bw
 		fprintf(stderr, "[%s] discard insert size estimate as user's request.\n", __func__);
 		ii->low = ii->high = 0; ii->avg = ii->std = -1.0;
 	}
-
 	// PE
 #ifdef HAVE_PTHREAD
 	if (n_threads <= 1) { // no multi-threading at all
@@ -1098,7 +1099,7 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 			n_threads = (popt->thread > max_threads)? max_threads : popt->thread ;
 		}else if (max_threads >= 2)
 		{
-			n_threads = (max_threads <= 4)? max_threads : 4 ;
+			n_threads = (max_threads <= 8)? max_threads : 8 ;
 		}else
 		{
 			n_threads = 1;
@@ -1116,10 +1117,12 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 		fn_sa[0], fn_sa[1]); //both must be valid here or would have failed on xopen
 	if(!popt->verbose) fprintf(stderr, "[sampe_core] ");
 
+	ubyte_t *pacseq = 0; //YHBL: moved to here because we want it to stay with set values within the loop
+
 	while ((seqs[0] = bwa_read_seq(ks[0], BATCH_SIZE, &n_seqs, opt0.mode, opt0.trim_qual)) != 0) {
 
 		isize_info_t ii;
-		ubyte_t *pacseq = 0;
+		//ubyte_t *pacseq = 0; see above
 		int n_seqs1 = 0;
 
 		gettimeofday (&start, NULL);
@@ -1179,6 +1182,7 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 #else
 		bwa_paired_sw(bns, n_seqs, seqs, popt, &ii, pacseq, 0, 0);
 #endif
+
 		gettimeofday (&end, NULL);
 		time_used = diff_in_seconds(&end,&start);
 		total_time_used += time_used;
@@ -1196,8 +1200,6 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 
 		if(popt->verbose) fprintf(stderr, "[sampe_core] Time used: %.2f sec\n", time_used);
 		else fprintf(stderr, "O");
-
-		if (pac == 0) free(pacseq);
 
 		if(popt->verbose) fprintf(stderr, "[sampe_core] Printing alignments... \n");
 		gettimeofday (&start, NULL);
@@ -1220,7 +1222,11 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 
 		for (j = 0; j < 2; ++j)
 			bwa_free_read_seq(n_seqs, seqs[j]);
+
+		if (!pac) free(pacseq); //not freed under default options
+
 		if(popt->verbose) fprintf(stderr, "[sampe_core] %d sequences have been processed.\n", tot_seqs);
+
 		last_ii = ii;
 	}
 	gettimeofday (&start, NULL);
@@ -1238,7 +1244,7 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 		if (kh_exist(g_hash, iter)) free(kh_val(g_hash, iter).a);
 	kh_destroy(b128, g_hash);
 	if (pac) {
-		free(pac); bwt_destroy(bwt);
+		free(pac); free(pacseq); bwt_destroy(bwt); // YHBL: added free pacseq as it pac will never be zero in the loop and thus not freed
 	}
 	gettimeofday (&end, NULL);
 	time_used = diff_in_seconds(&end,&start);
