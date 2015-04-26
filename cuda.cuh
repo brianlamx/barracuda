@@ -26,7 +26,8 @@
 
 */
 
-/* (0.7.0) beta: $Revision: 1.105 $
+/* (0.7.0) beta: $Revision: 1.106 $
+  26 Apr 2015 WBL If debug replace FIXED_MAX_global_bwt with size_global_bwt
   27 Feb 2015 WBL scache_global_bwt failed to speed cuda2.cuh, instead
 let cuda_inexact_match_caller use old code without mycache 
   26 Feb 2015 WBL cuda_inexact_match_caller uses up to 15(rather than 7) closelyplaced words so should work fine with mycache but doesnt
@@ -311,16 +312,13 @@ __device__ uint32_t __occ_cuda_aux4(const uint32_t b) {
   #define read_mycache(x) mycache[x]
 #endif /*scache_global_bwt*/
 
-//special for GP 3101804804/4 ncbi_hs_ref/h_sapiens_37.5_asm
-#define FIXED_MAX_global_bwt 775451201
-
 __device__ uint32_t __global_bwt(uint32_t *global_bwt, const int i, const int j, int* last, d_mycache) {
   const int cache_loads = 16*sizeof(uint32_t)/sizeof(ldg_t);
   const int ii = i+sizeof(bwtint_t)/sizeof(uint32_t)*j;
   const int base = ii & (~0xf);
   if((*last) != base) {
-#if defined(FIXED_MAX_global_bwt) || DEBUG_LEVEL > 0
-    assert(!(base<0 || base >= FIXED_MAX_global_bwt)); //provide debug bounds checks
+#if DEBUG_LEVEL > 0
+    assert(!(base<0 || base >= size_global_bwt)); //provide debug bounds checks
 #endif /*debug*/
 
     const ldg_t* p = (ldg_t*)&(global_bwt[base]);
