@@ -27,6 +27,7 @@
 */
 
 /* (0.7.0) beta: 
+  26 Apr 2015 WBL  Add size_global_bwt
   13 Mar 2015 YHBL Added K40 large buffer support (about 9 GB total usage).
   13 Mar 2015 YHBL Clean up obsolete codes
    4 Mar 2015 WBL print name of active GPU, remove individual cuda_inexact_match_caller times
@@ -64,7 +65,7 @@ improve "[aln_debug] bwt loaded %lu bytes, <assert.h> include cuda.cuh
   Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
 */
 
-#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.105 $"
+#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.107 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -183,6 +184,7 @@ __device__ __constant__ bwt_t bwt_cuda;
 __device__ __constant__ bwt_t rbwt_cuda;
 __device__ __constant__ uint32_t* bwt_occ_array2;
 __device__ __constant__ gap_opt_t options_cuda;
+__device__ __constant__ int size_global_bwt; //number of int for bounds checking
 
 //Texture Maps
 // uint4 is used because the maximum width for CUDA texture bind of 1D memory is 2^27,
@@ -274,6 +276,10 @@ size_t copy_bwts_to_cuda_memory(const char * prefix, uint32_t ** bwt, uint32_t m
 		bwt_destroy(bwt_src);
 
 
+		assert(INT_MAX>= size_read/sizeof(int)); //signed int index used in device code
+		const int size = size_read/sizeof(int);
+		cudaMemcpyToSymbol (size_global_bwt, &size, sizeof(int), 0, cudaMemcpyHostToDevice);
+		report_cuda_error_GPU("[aln_core] Error copying to \"size_global_bwt\" constant.\n");
 	}
 	else
 	{
