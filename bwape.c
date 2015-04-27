@@ -512,13 +512,20 @@ int err_fread(const void *ptr, size_t size, size_t nobj, FILE *stream) {
 }
 void check_opt(const gap_opt_t* opt, const int fileid, const char* filename) {
   //sanity check for stupid users like me
-  const int temp;
-  memcpy(&temp,opt,sizeof(int));
-  if(temp >= 0x0a0a0a0a) {//4 ascii chars? Eg fasta file not SAI file
-    char buff[5];
-    memcpy(buff,opt,4);
-    buff[4] = 0;
-    fprintf(stderr,"WARNING Odd header %s 0x%04x on SAI file",buff,temp);
+  const unsigned short int temp;
+  memcpy(&temp,opt,2);
+  if(temp >= 0x0a0a) {//2 ascii chars? Eg fasta file not SAI file, 
+                      //also trap gzip,bzip,pkzip,zip magic numbers
+    char buff[3];
+    memcpy(buff,opt,2);
+    buff[2] = 0;
+    int ascii = 1; int i;
+    for(i=0;i<2;i++) if(buff[i]<32 || buff[i]>127) ascii=0;
+    fprintf(stderr,"WARNING Odd header ");
+    if(ascii) fprintf(stderr,"%s ",buff);
+    fprintf(stderr,"0x%04x ",temp);
+    if(buff[0]==0x1f) fprintf(stderr,"(compressed file?) ");
+    fprintf(stderr,"on SAI file");
     if(fileid>=0) fprintf(stderr,"%d",fileid);
     fprintf(stderr," %s\n",filename);
     fprintf(stderr,"Check command line?\n");
