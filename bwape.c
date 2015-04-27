@@ -1,4 +1,5 @@
 /*
+  WBL 27 Apr 2015 add check_opt
   2015-03-18 YHBL Fixed memory leak in pacseq calloc
   2014-11-28 (0.7.0) beta: WBL Add err_fread() and checking fn_sa have same numbers of query sequences
   2014-11-05 (0.7.0) beta: WBL Add .sai filenames to "Converting SA" diagnostic
@@ -508,6 +509,20 @@ int err_fread(const void *ptr, size_t size, size_t nobj, FILE *stream) {
   if(ferror(stream)) err_fatal_simple_core("fread", strerror(saveErrno));
   if(n < nobj)       err_fatal_simple_core("fread", "not enough data read");
   return n;
+}
+void check_opt(const gap_opt_t* opt, const int fileid, const char* filename) {
+  //sanity check for stupid users like me
+  const int temp;
+  memcpy(&temp,opt,sizeof(int));
+  if(temp >= 0x0a0a0a0a) {//4 ascii chars? Eg fasta file not SAI file
+    char buff[5];
+    memcpy(buff,opt,4);
+    buff[4] = 0;
+    fprintf(stderr,"WARNING Odd header %s 0x%04x on SAI file",buff,temp);
+    if(fileid>=0) fprintf(stderr,"%d",fileid);
+    fprintf(stderr," %s\n",filename);
+    fprintf(stderr,"Check command line?\n");
+  }
 }
 
 void check_n_aln(const int n_aln, const int i, const int j) {
@@ -1062,9 +1077,11 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 	gettimeofday (&start, NULL);
 
 	err_fread(&opt, sizeof(gap_opt_t), 1, fp_sa[0]);
+	check_opt(&opt,0,fn_sa[0]);
 	ks[0] = bwa_open_reads(opt.mode, fn_fa[0]);
 	opt0 = opt;
 	err_fread(&opt, sizeof(gap_opt_t), 1, fp_sa[1]); // overwritten!
+	check_opt(&opt,1,fn_sa[1]);
 	ks[1] = bwa_open_reads(opt.mode, fn_fa[1]);
 	if (!(opt.mode & BWA_MODE_COMPREAD)) {
 		popt->type = BWA_PET_SOLID;

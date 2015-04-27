@@ -1,5 +1,6 @@
 /*
-  (0.7.0) beta: $Revision: 1.4 $ 
+  (0.7.0) beta: $Revision: 1.6 $ 
+  WBL 27 Apr 2015 add check_opt
   WBL 11 Feb 2015 Still not in SVN, try to compile..
 restore STDOUT_STRING_RESULT add same_length
   WBL 16 Dec 2014 Add max_length argument to barracuda_read_seqs()
@@ -131,6 +132,9 @@ typedef struct {
 	int bwa_output;
 	int cuda_device;
 } gap_opt_t;
+
+//sanity check
+void check_opt(const gap_opt_t* opt, const int fileid, const char* filename);
 
 #define BWA_PET_STD   1
 #define BWA_PET_SOLID 2

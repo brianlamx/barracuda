@@ -1,3 +1,7 @@
+/*
+  WBL 27 Apr 2015 add calling check_opt sanity check
+*/
+
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
@@ -599,6 +603,7 @@ void bwa_sai2sam_se_core(const char *prefix, const char *fn_sa, const char *fn_f
 
 	m_aln = 0;
 	fread(&opt, sizeof(gap_opt_t), 1, fp_sa);
+	check_opt(&opt,-1,fn_sa);
 	if (!(opt.mode & BWA_MODE_COMPREAD)) // in color space; initialize ntpac
 		ntbns = bwa_open_nt(prefix);
 	bwa_print_sam_SQ(bns);
