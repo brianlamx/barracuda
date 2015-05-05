@@ -1,17 +1,18 @@
 /* (0.7.0) beta: 
+  5 May 2015 BL Change version to 0.7.0.r107
   19 Jan 2015 WBL change PACKAGE_VERSION
    2 Jan 2015 WBL bugfix if bwa_aln() reports error (eg bad command line) return error status
 */
 
 #include <stdio.h>
-#include <string.h>
+#include <string.h>s
 #include "main.h"
 #include "utils.h"
 #include "barracuda.h"
 #include <time.h>
 
 #ifndef PACKAGE_VERSION
-#define PACKAGE_VERSION "0.7.0 GP r1.5"
+#define PACKAGE_VERSION "0.7.0r107"
 #endif
 
 static int usage()
