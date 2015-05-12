@@ -27,6 +27,7 @@
 */
 
 /* (0.7.0) beta: 
+   7 May 2015 WBL  Reduce buffer and blocksize for SM_1x
   26 Apr 2015 WBL  Add size_global_bwt
   13 Mar 2015 YHBL Added K40 large buffer support (about 9 GB total usage).
   13 Mar 2015 YHBL Clean up obsolete codes
@@ -65,7 +66,7 @@ improve "[aln_debug] bwt loaded %lu bytes, <assert.h> include cuda.cuh
   Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
 */
 
-#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.107 $"
+#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.109 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -190,8 +191,8 @@ __device__ __constant__ int size_global_bwt; //number of int for bounds checking
 // uint4 is used because the maximum width for CUDA texture bind of 1D memory is 2^27,
 // and uint4 the structure 4xinteger is x,y,z,w coordinates and is 16 bytes long,
 // therefore effectively there are 2^27x16bytes memory can be access = 2GBytes memory.
-texture<uint4, 1, cudaReadModeElementType> bwt_occ_array;
-texture<uint4, 1, cudaReadModeElementType> rbwt_occ_array;
+//texture<uint4, 1, cudaReadModeElementType> bwt_occ_array;
+//texture<uint4, 1, cudaReadModeElementType> rbwt_occ_array;
 texture<unsigned int, 1, cudaReadModeElementType> sequences_array;
 texture<uint2, 1, cudaReadModeElementType> sequences_index_array;
 
@@ -759,7 +760,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 	if ((int) selected_properties.major > 1) {
 		blocksize = 64;
 	} else {
-		blocksize = 320;
+		blocksize = 64;//gives 99% of top speed on Tesla T10 with ERR239771_1.200k.fastq
 	}
 
 	while ( ( no_of_sequences = copy_sequences_to_cuda_memory(ks, global_sequences_index, main_sequences_index, global_sequences, main_sequences, &read_size, &max_sequence_length, &same_length, buffer, main_suffixes, SUFFIX_CLUMP_WIDTH) ) > 0 )
@@ -1525,6 +1526,15 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 		}
 
 	}
+
+	cudaGetDeviceProperties(&properties, sel_device);
+	report_cuda_error_GPU("[core] Error on cudaGetDeviceProperties2");
+	if (properties.major <= 1 && buffer>21) {
+	  fprintf(stderr,"[aln_core] Barracuda not supported on CUDA compute level %d.%d GPUs! Reducing buffer %d to %d\n",
+		  properties.major,properties.minor,buffer,21);
+	  buffer = 21;
+	}
+	//fprintf(stderr,"[aln_core] buffer is %d.\n",buffer,16);
 
 	//calls core_kernel_loop
 	core_kernel_loop(sel_device, buffer, opt, ks, total_time_used, global_bwt);

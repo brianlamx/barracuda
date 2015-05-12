@@ -1,7 +1,8 @@
-/*WBL 7 Jan 2015 (0.7.0) beta: $Revision: 1.6 $
+/*WBL 7 Jan 2015 (0.7.0) beta: $Revision: 1.7 $
    Barracuda - A Short Sequence Aligner for NVIDIA Graphics Cards
 
    Module: read_mycache.cuh helper for CUDA version
+   WBL  7 May 2015 Make assert depend on compute level
    WBL 25 Feb 2015 Augment MY_DEBUG with assert
  */
 
@@ -40,7 +41,9 @@ default:
 //if(blockIdx.x==0 && blockIdx.y==0 && threadIdx.x==0) printf("read_mycache_uint4(%d) max_mycache=%d range error\n",x,max_mycache);
   if(blockIdx.x==0 && blockIdx.y==0 && threadIdx.x==0) printf("read_mycache_uint4(%d) max_mycache=??? range error\n",x);
 #endif /*MY_DEBUG*/
-    assert(0);
+#if __CUDA_ARCH__ >= 200
+    assert(0); //asserts on GPU not supported before compute level 2.0
+#endif
     return 0;
   }
 }
@@ -75,7 +78,9 @@ __device__ inline uint32_t read_mycache_uint2(d_mycache8, const int x) {
 #ifdef MY_DEBUG
 if(blockIdx.x==0 && blockIdx.y==0 && threadIdx.x==0) printf("read_mycache_uint2(%d) max_mycache=%d range error\n",x,max_mycache);
 #endif /*MY_DEBUG*/
-    assert(0);
+#if __CUDA_ARCH__ >= 200
+    assert(0); //asserts on GPU not supported before compute level 2.0
+#endif
     return 0;
   }
 }
@@ -111,7 +116,9 @@ __device__ inline uint32_t read_mycache_uint(d_mycache16, const int x) {
 #ifdef MY_DEBUG
 if(blockIdx.x==0 && blockIdx.y==0 && threadIdx.x==0) printf("read_mycache_uint(%d) max_mycache=%d range error\n",x,max_mycache);
 #endif /*MY_DEBUG*/
-    assert(0);
+#if __CUDA_ARCH__ >= 200
+    assert(0); //asserts on GPU not supported before compute level 2.0
+#endif
     return 0;
   }
 }
