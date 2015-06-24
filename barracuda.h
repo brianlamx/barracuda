@@ -1,10 +1,11 @@
 
 /*
- * barracuda.h $Revision: 1.9 $ 
+ * barracuda.h $Revision: 1.11 $ 
  *
  *  Created on: 8 Jun 2012
  *      Author: yhbl2
  *
+ * WBL 24 Jun 2015 copy_bwts_to_cuda_memory to use size_t through out
  * WBL 28 Feb 2015 Remove deadcode for alternative sequences_array layout
  * WBL 11 Feb 2015 For SVN, retain bwtkl_t
  * WBL 16 Dec 2014 Add pack_length next_packed
@@ -175,10 +176,10 @@ typedef struct {
 
 	//gap_opt_t *gap_init_opt();
 
-	unsigned long copy_bwts_to_cuda_memory(
+	size_t copy_bwts_to_cuda_memory(
 			const char * prefix,
 			uint32_t ** bwt,
-			uint32_t mem_available,
+			const size_t mem_available,
 			bwtint_t* seq_len);
 
 	void barracuda_bwa_aln_core(const char *prefix,
