@@ -27,6 +27,7 @@
 */
 
 /* (0.7.0) beta: 
+  24 Jun 2015 WBL  Fix cuda_alignment_core's use of copy_bwts_to_cuda_memory
    7 May 2015 WBL  Reduce buffer and blocksize for SM_1x
   26 Apr 2015 WBL  Add size_global_bwt
   13 Mar 2015 YHBL Added K40 large buffer support (about 9 GB total usage).
@@ -66,7 +67,7 @@ improve "[aln_debug] bwt loaded %lu bytes, <assert.h> include cuda.cuh
   Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
 */
 
-#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.109 $"
+#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.110 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -225,16 +226,16 @@ void report_cuda_error_GPU(cudaError_t cuda_error, const char *message)
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 
-size_t copy_bwts_to_cuda_memory(const char * prefix, uint32_t ** bwt, uint32_t mem_available, bwtint_t* seq_len)
+size_t copy_bwts_to_cuda_memory(const char * prefix, uint32_t ** bwt, 
+				const size_t mem_available, bwtint_t* seq_len)
 // bwt occurrence array to global and bind to texture, bwt structure to constant memory
 // this function only load part of the bwt for alignment only.  SA is not loaded.
 // mem available in MiB (not bytes)
 {
 	bwt_t * bwt_src;
-	size_t size_read = 0;
 
 	#if DEBUG_LEVEL > 0
-			fprintf(stderr,"[aln_debug] mem left: %d\n", mem_available);
+	fprintf(stderr,"[aln_debug] mem left: %lu\n", mem_available);
 	#endif
 
 	//Original BWT
@@ -244,14 +245,14 @@ size_t copy_bwts_to_cuda_memory(const char * prefix, uint32_t ** bwt, uint32_t m
 	bwt_src = bwt_restore_bwt(str);
 	free(str);
 
+	const size_t size_read = bwt_src->bwt_size*sizeof(uint32_t);
 	#if DEBUG_LEVEL > 0
 			fprintf(stderr,"[aln_debug] bwt loaded %lu bytes to CPU \n", size_read);
 	#endif
-	size_read = bwt_src->bwt_size*sizeof(uint32_t);
-	mem_available = mem_available - uint32_t (size_read>>20); // mem available in MiB (not bytes)
+	const size_t mem_left = mem_available - size_read;
 	*seq_len = bwt_src->seq_len;
 
-	if(mem_available > 0)
+	if(mem_left > 0)
 	{
 		//Allocate memory for bwt
 		const int bwt_size = (bwt_src->bwt_size + 15) & (~0xf); //ensure multiple of 16 ints
@@ -291,7 +292,9 @@ size_t copy_bwts_to_cuda_memory(const char * prefix, uint32_t ** bwt, uint32_t m
 	}
 
 	#if DEBUG_LEVEL > 0
-			fprintf(stderr,"[aln_debug] bwt loaded, mem left: %d MiB\n", mem_available);
+	fprintf(stderr,"[aln_debug] bwt loaded, mem left: %lu \n", mem_left);
+	fprintf(stderr,"[aln_debug] copy_bwts_to_cuda_memory(%s,**bwt,%lu,*seq_len) returns %lu \n", 
+		prefix,mem_available,size_read);
 	#endif
 
 	return size_read;
@@ -1466,25 +1469,28 @@ void cuda_alignment_core(const char *prefix, bwa_seqio_t *ks,  gap_opt_t *opt)
 
 	// pointer to bwt occurrence array in GPU
 	uint32_t * global_bwt = 0;
-	// total number of bwt_occ structure read in bytes
-	unsigned long long bwt_read_size = 0;
 
 	cudaMemGetInfo(&mem_available, &total_mem);
 		 report_cuda_error_GPU("[core] Error_2 on cudaMemGetInfo");
 	fprintf(stderr,"[aln_core] Loading BWTs, please wait..\n");
 
-	bwt_read_size = copy_bwts_to_cuda_memory(prefix, &global_bwt, mem_available>>20, &seq_len)>>20;
+	// total number of bwt_occ structure read in bytes
+	const size_t bwt_read_size = copy_bwts_to_cuda_memory(prefix, &global_bwt, mem_available, &seq_len);
 
 	// copy_bwt_to_cuda_memory
 	// returns 0 if error occurs
 	// mem_available in MiB not in bytes
+
+	#if DEBUG_LEVEL > 0
+	fprintf(stderr,"[aln_debug] copy.. returned %lu\n",bwt_read_size);
+	#endif
 
 	if (!bwt_read_size) return; //break
 
 	gettimeofday (&end, NULL);
 	time_used = diff_in_seconds(&end,&start);
 	total_time_used += time_used;
-	fprintf(stderr, "[aln_core] Finished loading reference sequence assembly, %u MB in %0.2fs (%0.2f MB/s).\n", (unsigned int)bwt_read_size, time_used, ((unsigned int)bwt_read_size)/time_used );
+	fprintf(stderr, "[aln_core] Finished loading reference sequence assembly, %u MB in %0.2fs (%0.2f MB/s).\n", (unsigned int)bwt_read_size>>20, time_used, ((unsigned int)bwt_read_size>>20)/time_used );
 
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////////////////
