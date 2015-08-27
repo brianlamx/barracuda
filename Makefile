@@ -2,6 +2,7 @@
 # Configuration for BarraCUDA project
 #######################################################
 
+#WBL 25 Aug 2015 Avoid need for LD_LIBRARY_PATH by using libcudart_static.a in place of libcudart.so
 #WBL 28 Feb 2015 compile for Tesla K20 etc (sm_35)
 
 # cu source files
@@ -64,8 +65,10 @@ endif
 
 ifeq ($(Arch),sm_20)
 SM_VERSIONS := sm_20 # Compile sm_20 optimized code for fermi or above
-else
+else #ifeq ($(Arch),sm_35) #default is now K20 or above
 SM_VERSIONS := sm_35 # Only Tesla K20 and about supports __ldg
+#else 
+#SM_VERSIONS := sm_13 # 1.3 too old, not supported
 endif
 
 CUDA_INSTALL_PATH ?= /usr/local/cuda
@@ -124,7 +127,7 @@ CWARN_FLAGS := $(CXXWARN_FLAGS) \
 	-Wmain \
 
 # Compiler-specific flags
-NVCCFLAGS := 
+NVCCFLAGS := #--ptxas-options=-v #additional information on kernels
 CXXFLAGS  := $(CXXWARN_FLAGS)
 CFLAGS    := $(CWARN_FLAGS)
 
@@ -164,7 +167,12 @@ HP_64 =	$(shell uname -m | grep 64)
 
 
 # Dynamically linking to CUDA and CUDART
-LIB += -lcudart 
+#LIB += -lcudart 
+
+# Static linking to CUDA and CUDART
+LIB +=  -lcudart_static
+LIB +=  -ldl -lrt #also needed when swap to libcudart_static.a
+
 
 # add userlib at the end
 LIB += $(USERLIB)
@@ -301,7 +309,7 @@ endef
 $(foreach smver,$(SM_VERSIONS),$(eval $(call SMVERSION_template,$(smver))))
 
 all:$(TARGET)
-$(TARGET):makedirectories $(OBJS) $(CUBINS) $(PTXBINS) Makefile
+$(TARGET): makedirectories $(OBJS) $(CUBINS) $(PTXBINS) Makefile
 	$(VERBOSE)$(LINKLINE)
 	$(VERBOSE)echo "Done!"
 
