@@ -27,6 +27,7 @@
 */
 
 /* (0.7.0) beta: 
+  19 Jan 2016 WBL  Report error max_sequence_length > MAX_SEQUENCE_LENGTH and stop
   24 Jun 2015 WBL  Fix cuda_alignment_core's use of copy_bwts_to_cuda_memory
    7 May 2015 WBL  Reduce buffer and blocksize for SM_1x
   26 Apr 2015 WBL  Add size_global_bwt
@@ -67,7 +68,7 @@ improve "[aln_debug] bwt loaded %lu bytes, <assert.h> include cuda.cuh
   Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
 */
 
-#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.110 $"
+#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.111 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -825,6 +826,11 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 #if DEBUG_LEVEL > 3
 		//printf("cuda opt:%d\n", cuda_opt);
 #endif
+
+		if(max_sequence_length > MAX_SEQUENCE_LENGTH) {//protect cuda_prepare_widths etc.
+		  fprintf(stderr, "\n[aln_core] sequence of %d bp which exceeds limit %d\n[aln_core] Abort!\n", max_sequence_length, MAX_SEQUENCE_LENGTH);
+		  return;
+		}
 
 		cudaError_t cuda_err;
 
