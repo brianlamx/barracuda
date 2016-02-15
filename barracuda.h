@@ -1,10 +1,11 @@
 
 /*
- * barracuda.h $Revision: 1.11 $ 
+ * barracuda.h $Revision: 1.12 $ 
  *
  *  Created on: 8 Jun 2012
  *      Author: yhbl2
  *
+ * WBL 10 Feb 2016 increase MAX_SEQUENCE_LENGTH for cegx
  * WBL 24 Jun 2015 copy_bwts_to_cuda_memory to use size_t through out
  * WBL 28 Feb 2015 Remove deadcode for alternative sequences_array layout
  * WBL 11 Feb 2015 For SVN, retain bwtkl_t
@@ -31,7 +32,7 @@
 
 #define SUFFIX_CLUMP_WIDTH 0 //0 to disable
 
-#define MAX_SEQUENCE_LENGTH 100
+#define MAX_SEQUENCE_LENGTH 150
 #define MAX_ALN_LENGTH 100 //Max length for alignment kernel, cannot go beyond 225 (ptx error)
 #define MAX_NO_OF_ALIGNMENTS 10
 
