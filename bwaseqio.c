@@ -1,4 +1,5 @@
-/* $Revision: 1.10 $ 
+/* $Revision: 1.12 $ 
+WBL 15 Feb 2016 Make exceeding MAX_SEQUENCE_LENGTH a recoverable error
 WBL 16 Dec 2014 use next_packed and pack_length
 WBL  4 Dec 2014 add some checks that calloc was ok
  */
@@ -262,6 +263,7 @@ int bwa_read_seq_one_half_byte (bwa_seqio_t *bs, unsigned char * half_byte_array
 	return len;
 }
 
+static int excess_length_reported  =0;
 static int variable_length_reported=0;
 barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *bs,  unsigned int buffer,  int *n, int mode, int trim_qual, unsigned int *acc_length, unsigned short *max_length, int *same_length)
 {
@@ -332,6 +334,15 @@ barracuda_query_array_t *barracuda_read_seqs(bwa_seqio_t *bs,  unsigned int buff
 		if (trim_qual >= 1 && seq->qual.l) { // copy quality
 			seq_qual = (ubyte_t*)strdup((char*)seq->qual.s);
 			n_trimmed += barracuda_trim_read(trim_qual, p, seq_qual);
+		}
+
+		//To cut the length of the sequence Cf bwa_read_seq_one_half_byte
+		if ( query_length > MAX_SEQUENCE_LENGTH) {
+		  if(!excess_length_reported) {
+		    fprintf(stderr, "[barracuda_read_seq] Sequence %dBP truncated to %d\n",query_length, MAX_SEQUENCE_LENGTH);
+		    excess_length_reported=1;
+		  }
+		  query_length = MAX_SEQUENCE_LENGTH;
 		}
 		if(n_seqs==1) first_length =  query_length;
 		else       if(first_length != query_length) {
