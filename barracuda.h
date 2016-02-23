@@ -1,10 +1,12 @@
 
 /*
- * barracuda.h $Revision: 1.12 $ 
+ * barracuda.h $Revision: 1.13 $ 
  *
  *  Created on: 8 Jun 2012
  *      Author: yhbl2
  *
+ * WBL 22 Feb 2016 bugfix for reads of more than 127bp
+   ensure alignment_meta_t.pos and init_info_t.start_pos do not overflow 7bits
  * WBL 10 Feb 2016 increase MAX_SEQUENCE_LENGTH for cegx
  * WBL 24 Jun 2015 copy_bwts_to_cuda_memory to use size_t through out
  * WBL 28 Feb 2015 Remove deadcode for alternative sequences_array layout
@@ -30,7 +32,7 @@
 #define SEQUENCE_HOLDER_LENGTH MAX_PASS_LENGTH //set this to max(MAX_PASS_LENGTH, SPLIT_ENGAGE) - this minimises the memory usage of a kernel
 #define MAX_SEED_LENGTH 50 // not tested beyond 50
 
-#define SUFFIX_CLUMP_WIDTH 0 //0 to disable
+#define SUFFIX_CLUMP_WIDTH 0 //0 to disable, 1 to enable (do not exceed 255)
 
 #define MAX_SEQUENCE_LENGTH 150
 #define MAX_ALN_LENGTH 100 //Max length for alignment kernel, cannot go beyond 225 (ptx error)
@@ -79,7 +81,7 @@ extern "C" {
 		bwtint_t lim_l;
 		unsigned char cur_n_mm, cur_n_gapo,cur_n_gape;
 		int best_diff;
-		char start_pos;
+		int start_pos;
 		int score;
 		int sequence_id;
 		int best_cnt;
@@ -100,7 +102,7 @@ extern "C" {
 		int best_score; //marks best score achieved for particular sequence in the forward run - not updated for backward atm
 		unsigned int sequence_id;
 		int best_cnt;
-		char pos;
+		int pos;
 		char finished;
 	} alignment_meta_t;
 
