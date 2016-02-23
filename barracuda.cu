@@ -27,6 +27,8 @@
 */
 
 /* (0.7.0) beta: 
+ * WBL 22 Feb 2016 bugfix for reads of more than 127bp
+   ensure alignment_meta_t.pos and init_info_t.start_pos do not overflow 7bits
   19 Jan 2016 WBL  Report error max_sequence_length > MAX_SEQUENCE_LENGTH and stop
   24 Jun 2015 WBL  Fix cuda_alignment_core's use of copy_bwts_to_cuda_memory
    7 May 2015 WBL  Reduce buffer and blocksize for SM_1x
@@ -68,7 +70,7 @@ improve "[aln_debug] bwt loaded %lu bytes, <assert.h> include cuda.cuh
   Ensure all kernels followed by cudaDeviceSynchronize so they can report asynchronous errors
 */
 
-#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.111 $"
+#define PACKAGE_VERSION "0.7.0 beta $Revision: 1.112 $"
 #include <stdio.h>
 #include <unistd.h>
 #include <math.h>
@@ -561,6 +563,7 @@ void add_to_process_queue(init_bin_list * bin, barracuda_aln1_t * aln, alignment
 
 	//each kernel updates its own start_pos for the next round based upon the pass length it determines
 	//this allows us to run partial hits from different points in sequences or for sequences of different lengths
+	assert(partial->pos >= 0); //could fail in 0.7.107d as used signed char
 	to_queue->start_pos = partial->pos;
 
 	to_queue->lim_k = aln->k;
@@ -610,6 +613,22 @@ void stdout_barracuda_aln1(const barracuda_aln1_t *aln, const size_t nmemb) {
 #undef stdout_aln1
 
 /*WBL for debug
+void print_init_host(const int no_to_process, const init_info_t * global_init_host) {
+  fprintf(stderr,"\n");
+  fprintf(stderr,"print_init_host(%d,global_init_host)\n",no_to_process);
+  for(int i=0;i<no_to_process;i++) {
+    fprintf(stderr,"%lu %lu %u %u %u best_diff %d start_pos %d score %d id %d best_cnt %d\n",
+	    global_init_host[i].lim_k,
+	    global_init_host[i].lim_l,
+	    int(global_init_host[i].cur_n_mm), int(global_init_host[i].cur_n_gapo), int(global_init_host[i].cur_n_gape),
+	    global_init_host[i].best_diff,
+	    int(global_init_host[i].start_pos),
+	    global_init_host[i].score,
+	    global_init_host[i].sequence_id,
+	    global_init_host[i].best_cnt);
+  }
+}
+
 void print_global_alns(const int no_to_process, const int max_no_partial_hits, const barracuda_aln1_t * global_alns_device) {
   const size_t nbytes = max_no_partial_hits*no_to_process*sizeof(barracuda_aln1_t);
   barracuda_aln1_t * global_alns_host = (barracuda_aln1_t*)malloc(nbytes);
@@ -617,18 +636,20 @@ void print_global_alns(const int no_to_process, const int max_no_partial_hits, c
   cudaMemcpy(global_alns_host, global_alns_device, nbytes, cudaMemcpyDeviceToHost);
   report_cuda_error_GPU("[aln_core] Error reading \"global_alns_host\" from GPU for print.");
 
+  fprintf(stderr,"\n");
+  fprintf(stderr,"print_global_alns(%d,%d,global_alns_device)\n",no_to_process,max_no_partial_hits);
   for(int i=0;i<no_to_process;i++) {
-    printf("alns %d ",i);
+    fprintf(stderr,"alns %d ",i);
     for(int j=0;j<max_no_partial_hits;j++) {
-      printf("%d %d %d ",
+      fprintf(stderr,"%d %d %d ",
 	     int(global_alns_host[i].n_mm),
 	     int(global_alns_host[i].n_gapo),
 	     int(global_alns_host[i].n_gape));
-      printf("%lu %lu ",global_alns_host[i].k,global_alns_host[i].l);
-      printf("%d %d",global_alns_host[i].score,global_alns_host[i].best_cnt);
-      if(j<max_no_partial_hits-1) printf(", ");
+      fprintf(stderr,"%lu %lu ",global_alns_host[i].k,global_alns_host[i].l);
+      fprintf(stderr,"%d %d",global_alns_host[i].score,global_alns_host[i].best_cnt);
+      if(j<max_no_partial_hits-1) fprintf(stderr,", ");
     }
-    printf("\n");
+    fprintf(stderr,"\n");
   }
 
   free(global_alns_host);
@@ -1221,6 +1242,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 #if ARRAN_DEBUG_LEVEL > 0
 		fprintf(stderr, "\n[aln_core][split_process] no_to_process: %i", no_to_process);
 #endif
+				//print_init_host(no_to_process,global_init_host);
 				cudaMemcpy(global_init_device, global_init_host, no_to_process*sizeof(init_info_t), cudaMemcpyHostToDevice);
 				report_cuda_error_GPU("[aln_core] Error_2 copying \"global_init_host\" to GPU.");
 
@@ -1229,7 +1251,7 @@ void core_kernel_loop(int sel_device, int buffer, gap_opt_t *opt, bwa_seqio_t *k
 				//struct timeval start2;
 				//gettimeofday (&start2, NULL);
 				cuda_inexact_match_caller<<<dimGrid,dimBlock>>>(global_bwt, no_to_process, global_alignment_meta_device, global_alns_device, global_init_device, global_w_b_device, best_score, split_engage, 0);
-				//fprintf(stderr,"2 cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(,%d,,,,,,,0)\n",
+				//fprintf(stderr," 2_cuda_inexact_match_caller<<<(%d,%d,%d)(%d,%d,%d)>>>(,%d,,,,,,,0)\n",
 				//	dimGrid.x,dimGrid.y,dimGrid.z,dimBlock.x,dimBlock.y,dimBlock.z,no_to_process);
 				cudaDeviceSynchronize(); //wait until kernel has had a chance to report error
 				cuda_err = cudaGetLastError();
