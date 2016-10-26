@@ -1,4 +1,5 @@
 /*
+  WBL 14 Oct 2016 Remove limit on max_threads, cf 32 limit BYHL 30 Aug 2016
   WBL 27 Apr 2015 add check_opt
   2015-03-18 YHBL Fixed memory leak in pacseq calloc
   2014-11-28 (0.7.0) beta: WBL Add err_fread() and checking fn_sa have same numbers of query sequences
@@ -1123,7 +1124,7 @@ void bwa_sai2sam_pe_core(const char *prefix, char *const fn_sa[2], char *const f
 			n_threads = (popt->thread > max_threads)? max_threads : popt->thread ;
 		}else if (max_threads >= 2)
 		{
-			n_threads = (max_threads <= 8)? max_threads : 8 ;
+			n_threads = /*(max_threads <= 8)?*/ max_threads /*:8*/;
 		}else
 		{
 			n_threads = 1;
