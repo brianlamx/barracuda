@@ -25,6 +25,8 @@
 
 /* Contact: Heng Li <lh3@sanger.ac.uk> */
 
+/* Bob Davidson 13 Oct 2016 For Ubuntu 16.4, gcc version 5.4.0 */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -129,7 +131,7 @@ inline bwtint_t bwt_occ(const bwt_t *bwt, bwtint_t k, ubyte_t c)
 }
 
 // an analogy to bwt_occ() but more efficient, requiring k <= l
-inline void bwt_2occ(const bwt_t *bwt, bwtint_t k, bwtint_t l, ubyte_t c, bwtint_t *ok, bwtint_t *ol)
+void bwt_2occ(const bwt_t *bwt, bwtint_t k, bwtint_t l, ubyte_t c, bwtint_t *ok, bwtint_t *ol)
 {
 
 	bwtint_t _k, _l;
@@ -220,7 +222,7 @@ inline void bwt_occ4(const bwt_t *bwt, bwtint_t k, bwtint_t cnt[4])
 }
 
 // an analogy to bwt_occ4() but more efficient, requiring k <= l
-inline void bwt_2occ4(const bwt_t *bwt, bwtint_t k, bwtint_t l, bwtint_t cntk[4], bwtint_t cntl[4])
+void bwt_2occ4(const bwt_t *bwt, bwtint_t k, bwtint_t l, bwtint_t cntk[4], bwtint_t cntl[4])
 {
 	bwtint_t _k, _l;
 	_k = (k >= bwt->primary)? k-1 : k;
