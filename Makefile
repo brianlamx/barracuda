@@ -29,7 +29,7 @@ endif
 # Default configuration (Autodetected)
 #######################################################
 #Cuda installation path (default)
-CUDA_INSTALL_PATH := /usr/local/cuda
+CUDA_INSTALL_PATH ?= /usr/local/cuda
 NV_ROOT_PATH := $(HOME)/NVIDIA_CUDA_SDK
 
 # Basic Auto variable setup for SDK
@@ -65,6 +65,10 @@ endif
 
 ifeq ($(Arch),sm_20)
 SM_VERSIONS := sm_20 # Compile sm_20 optimized code for fermi or above
+else ifeq ($(Arch),sm_60) # Compile code optimized for sm_60
+SM_VERSIONS := sm_60
+else ifeq ($(Arch),sm_61) # Compile code optimized for sm_61
+SM_VERSIONS := sm_61
 else #ifeq ($(Arch),sm_35) #default is now K20 or above
 SM_VERSIONS := sm_35 # Only Tesla K20 and about supports __ldg
 #else 

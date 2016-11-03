@@ -338,7 +338,7 @@ int bwa_aln(int argc, char *argv[])
 	gap_opt_t *opt;
 
 	opt = gap_init_opt();
-	while ((c = getopt(argc, argv, "n:o:e:C:i:d:l:k:cgLR:m:t:NM:O:E:q:f:b012IYB:")) >= 0) {
+	while ((c = getopt(argc, argv, "n:o:e:C:i:d:l:k:cgLR:m:t:NM:O:E:q:f:b012IYB:z")) >= 0) {
 		switch (c) {
 		case 'n':
 			if (strstr(optarg, ".")) opt->fnr = atof(optarg), opt->max_diff = -1;
@@ -370,6 +370,7 @@ int bwa_aln(int argc, char *argv[])
 		case 'I': opt->mode |= BWA_MODE_IL13; break;
 		case 'Y': opt->mode |= BWA_MODE_CFY; break;
 		case 'B': opt->mode |= atoi(optarg) << 24; break;
+		case 'z': opt->no_header = 1; break;
 		default: return 1;
 		}
 	}
@@ -410,6 +411,8 @@ int bwa_aln(int argc, char *argv[])
 		fprintf(stderr, "\n");
 		fprintf(stderr, "         -C        Specify CUDA compute device. Default [auto-detect]\n");
 		fprintf(stderr, "         -g        Allow gap opening in seed. Default [Don't allow any gap openings]\n");
+		fprintf(stderr, "\n");
+		fprintf(stderr, "         -z        Write .sai file without a header\n");
 		fprintf(stderr, "\n");
 		return 1;
 	}
