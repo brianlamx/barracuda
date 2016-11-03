@@ -1,0 +1,145 @@
+#!/bin/bash
+
+#### Register barracuda executable path
+barracudaExec=barracuda
+#[ ! -f $barracudaExec ] && echo "Cannot find barracuda executable" && exit 1
+
+#### Clean script
+clean()
+{
+  echo Cleaning . . .
+  [ `ps | grep -c execRun.sh` -ne 0 ] && killall execRun.sh
+  [ `ps | grep -c barracuda` -ne 0 ] && killall barracuda
+  [ `ls | grep -c ^outSai_splited_` -ne 0 ] && rm -f outSai_splited_*
+  [ `ls | grep -c ^outSam_splited_` -ne 0 ] && rm -f outSam_splited_*
+  [ `ls | grep -c ^splited_` -ne 0 ] && rm -f splited_*
+  [ -f devices.txt ] && rm -f devices.txt
+  [ -f execList.txt ] && rm -f execList.txt
+  [ -f finished ] && rm -f finished
+  [ -f execRun.sh ] && rm -f execRun.sh
+  [ -f execRun_first.sh ] && rm -f execRun_first.sh
+}
+
+#### Trap interrupt
+intDetect()
+{
+  echo Error or break!
+  clean
+  exit 1
+}
+
+#### Trap signal
+trap 'intDetect' SIGINT SIGTERM
+
+#### sanity check
+[ "$1" == "" -o "$2" == "" -o "$3" == "" ] && echo $0 reference input output [options] && exit 1
+options=`echo $* | cut -d" " -f 4-`
+
+#### Gather device information
+$barracudaExec deviceQuery > devices.txt
+
+#### gather device information
+deviceCount=`wc -l devices.txt | awk '{print $1}'`
+
+#### find and count usable device count
+# usable device count
+execCount=0;
+i=1
+[ -f execList.txt ] && rm execList.txt
+while [ $i -le $deviceCount ]
+do
+  curDev=`head -$i devices.txt | tail -1`
+  devNum=`echo $curDev| awk '{print $1}'`
+  devRam=`echo $curDev| awk '{print $2}'`
+  devVer=`echo $curDev| awk '{print $3}'`
+  if [ $devRam -ge 512 -a $devVer -ge 12 ] 
+  then
+    echo Device Number $devNum with RAM=$devRam MB Version=$devVer will be used
+    #usable device numbers are recorded in execList.txt
+    echo $devNum >> execList.txt
+    execCount=$[$execCount+1]
+  fi
+  i=$[$i+1]
+done
+
+#### splitting into files according to usable device count
+lineTotal=`wc -l $2 | awk '{print $1}'`
+
+lineDiv4=$[$lineTotal/4]
+remainder=$[$lineDiv4%execCount]
+if [ $remainder != 0 ]
+then 
+  lineExec=$[$lineDiv4/$execCount]
+  blockSize=$[$[$lineExec+1]*4]
+else
+  blockSize=$[$lineTotal/$execCount]
+fi
+
+echo Total number of lines = $lineTotal, usable devices = $execCount
+echo Now spliting \"$2\" with block size = $blockSize
+[ `ls | grep -c ^splited_` -ne 0 ] && rm -f splited_* 
+split -l $blockSize $2 splited_
+splited=`ls splited_*`
+
+### create execRun_first.sh
+printf "#!/bin/bash\n" > execRun_first.sh
+printf "options=`echo \$* | cut -d\" \" -f 6-`\n" >> execRun_first.sh
+printf "echo Using device \$1, \$2 as input, \$3 as reference.\n" >> execRun_first.sh
+printf "###Sam output name\n" >> execRun_first.sh
+printf "outName='outSam_'\$2\n" >> execRun_first.sh
+printf "###SAI output name\n" >> execRun_first.sh
+printf "outNameSai='outSai_'\$2\n" >> execRun_first.sh
+printf "### Do alignment\n" >> execRun_first.sh
+printf "$barracudaExec aln -C \$1 $options \$3 \$2 > \$outNameSai\n" >> execRun_first.sh
+printf "[ \$? -ne 0 ] && kill -2 \$4 && exit 1\n" >> execRun_first.sh
+printf "echo 1 >> finished\n" >> execRun_first.sh
+chmod 755 execRun_first.sh
+
+### create execRun.sh
+printf "#!/bin/bash\n" > execRun.sh
+printf "options=`echo \$* | cut -d\" \" -f 6-`\n" >> execRun.sh
+printf "echo Using device \$1, \$2 as input, \$3 as reference.\n" >> execRun.sh
+printf "###Sam output name\n" >> execRun.sh
+printf "outName='outSam_'\$2\n" >> execRun.sh
+printf "###SAI output name\n" >> execRun.sh
+printf "outNameSai='outSai_'\$2\n" >> execRun.sh
+printf "### Do alignment\n" >> execRun.sh
+printf "$barracudaExec aln -z -C \$1 $options \$3 \$2 > \$outNameSai\n" >> execRun.sh
+printf "[ \$? -ne 0 ] && kill -2 \$4 && exit 1\n" >> execRun.sh
+printf "echo 1 >> finished\n" >> execRun.sh
+chmod 755 execRun.sh
+
+### Submitting jobs to usable devices
+[ -f finished ] && rm -f finished 
+touch finished
+i=1
+  curDev=`head -$i execList.txt | tail -1`
+  inputName=`echo $splited | awk '{print $1}'`
+  ./execRun_first.sh $curDev $inputName $1 $$ $options &
+  splited=`echo $splited | cut -d" " -f 2-`
+  i=$[$i+1]
+
+while [ $i -le $execCount ]
+do
+  curDev=`head -$i execList.txt | tail -1`
+  inputName=`echo $splited | awk '{print $1}'`
+  ./execRun.sh $curDev $inputName $1 $$ $options &
+  splited=`echo $splited | cut -d" " -f 2-`
+  i=$[$i+1]
+done
+
+### Waiting for results
+echo Waiting. . .
+finishCount=0
+while [ $finishCount -lt $execCount ]
+do
+  sleep 1
+  finishCount=`wc -l finished | awk '{print $1}'`
+done
+
+### Combine results
+outTemp=`ls outSai_splited_*`
+echo Combining result $outTemp to \"$3\"
+cat outSai_splited_* > $3
+clean
+echo finished
